@@ -48,26 +48,23 @@ def validar_respuesta(datos):
 
 
 def guardar_respuesta(datos):
-    """Guarda la respuesta original sin modificar."""
+    fecha = datetime.now()
+    nombre = f"cortes_{fecha:%Y%m%d_%H%M%S_%f}"
 
-    fecha_captura = datetime.now()
+    ruta = CARPETA_RAW / f"{nombre}.json"
+    ruta_meta = CARPETA_RAW / f"{nombre}.meta.json"
 
-    nombre = (
-        f"cortes_"
-        f"{fecha_captura.strftime('%Y%m%d_%H%M%S')}.json"
-    )
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(datos, f, ensure_ascii=False, indent=2)
 
-    ruta = CARPETA_RAW / nombre
+    metadatos = {
+        "fecha_captura_local": fecha.isoformat(),
+        "parametro_dias": DIAS,
+        "total_recibido": len(datos["data"])
+    }
 
-    datos["fecha_captura_local"] = fecha_captura.isoformat()
-
-    with open(ruta, "w", encoding="utf-8") as archivo:
-        json.dump(
-            datos,
-            archivo,
-            ensure_ascii=False,
-            indent=2
-        )
+    with open(ruta_meta, "w", encoding="utf-8") as f:
+        json.dump(metadatos, f, indent=2)
 
     return ruta
 

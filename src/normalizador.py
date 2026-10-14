@@ -1,6 +1,8 @@
 import json
 import csv
 from pathlib import Path
+from src.caracteristicas import crear_caracteristicas
+from datetime import datetime
 
 import pandas as pd
 
@@ -16,7 +18,11 @@ CARPETA_PROCESSED.mkdir(parents=True, exist_ok=True)
 def cargar_ultimo_json():
     """Carga el archivo JSON más reciente de data/raw."""
 
-    archivos = sorted(CARPETA_RAW.glob("cortes_*.json"))
+    archivos = sorted(
+        archivo
+        for archivo in CARPETA_RAW.glob("cortes_*.json")
+        if not archivo.name.endswith(".meta.json")
+    )
 
     if not archivos:
         raise FileNotFoundError(
@@ -122,14 +128,22 @@ def guardar_dataset(df):
         "interrupciones_normalizadas.csv"
     )
 
-    df.to_csv(
-        salida_csv,
-        index=False,
-        encoding="utf-8-sig",
-        sep=",",
-        quotechar='"',
-        quoting=csv.QUOTE_ALL
+    fecha = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+    salida_historica = (
+        CARPETA_PROCESSED /
+        f"interrupciones_{fecha}.csv"
     )
+
+    for ruta in [salida_csv, salida_historica]:
+        df.to_csv(
+            ruta,
+            index=False,
+            encoding="utf-8-sig",
+            sep=",",
+            quotechar='"',
+            quoting=csv.QUOTE_ALL
+        )
 
     return salida_csv
 
@@ -143,6 +157,7 @@ def main():
     datos, archivo = cargar_ultimo_json()
 
     df = normalizar(datos)
+    df = crear_caracteristicas(df)
 
     print()
     print("Registros:", len(df))
