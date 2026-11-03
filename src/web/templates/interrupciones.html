@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block titulo %}Interrupciones{% endblock %}
+{% block contenido %}
+<h1 class="mb-3">Interrupciones</h1>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-4">
+    <label class="form-label">Distrito</label>
+    <select class="form-select" name="distrito">
+      <option value="">Todos</option>
+      {% for d in distritos %}
+      <option value="{{ d }}" {% if distrito == d %}selected{% endif %}>{{ d.title() }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo</label>
+    <input class="form-control" name="tipo" value="{{ tipo }}" placeholder="PROGRAMADA">
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button class="btn btn-primary" type="submit">Filtrar</button>
+  </div>
+</form>
+<div class="table-responsive">
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>Id</th><th>Distrito</th><th>Tipo</th><th>Estado</th>
+      <th>Fechas reportadas</th><th>Áreas</th><th>Sector</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for fila in filas %}
+    <tr>
+      <td><a href="/interrupciones/{{ fila.id }}">{{ fila.id }}</a></td>
+      <td>{{ fila.municipalidad }}</td>
+      <td>{{ fila.tipo_incid }}</td>
+      <td>{{ fila.estado }}</td>
+      <td>{{ fila.fec_deteccion }} → {{ fila.fec_estimada }}</td>
+      <td>{{ (fila.areas_afectadas or '')[:80] }}</td>
+      <td>{{ fila.infor_web }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">No hay incidencias con esos filtros.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="text-muted">Las fechas son las reportadas por la fuente; no se interpretan como inicio o restauración confirmados.</p>
+{% endblock %}

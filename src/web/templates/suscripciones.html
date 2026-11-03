@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}Suscripciones{% endblock %}
+{% block contenido %}
+<h1 class="mb-3">Suscripciones voluntarias</h1>
+{% if mensaje %}<div class="alert alert-info">{{ mensaje }}</div>{% endif %}
+<p>El registro es voluntario. Debe confirmar el correo antes de que el sistema considere la suscripción apta para avisos. Por defecto los envíos reales están desactivados.</p>
+
+<h2 class="h5">Registrar o actualizar</h2>
+<form method="post" action="/suscripciones" class="card p-3 mb-4">
+  <div class="mb-3">
+    <label class="form-label">Correo</label>
+    <input class="form-control" type="email" name="correo" required value="{{ correo }}">
+  </div>
+  <p class="mb-2">Distritos de Lima Metropolitana</p>
+  <div class="row">
+    {% for z in zonas if z.tipo == 'DISTRITO' %}
+    <div class="col-md-4">
+      <label class="form-check">
+        <input class="form-check-input" type="checkbox" name="zonas" value="{{ z.id }}">
+        {{ z.nombre }}
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="row mt-3">
+    <div class="col-md-4">
+      <label class="form-label">Sector opcional (ej. Sector 168)</label>
+      <input class="form-control" name="sector">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Distrito del sector</label>
+      <input class="form-control" name="distrito_sector" placeholder="SANTA ANITA">
+    </div>
+  </div>
+  <div class="row mt-2">
+    <div class="col-md-4">
+      <label class="form-label">Área opcional</label>
+      <input class="form-control" name="area" placeholder="Urb. Santa Aurelia">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Distrito del área</label>
+      <input class="form-control" name="distrito_area">
+    </div>
+  </div>
+  <button class="btn btn-primary mt-3" type="submit">Registrar</button>
+</form>
+
+<h2 class="h5">Consultar mis suscripciones</h2>
+<p>No se publica un listado de correos. Ingrese el correo para ver solo esas suscripciones.</p>
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-6">
+    <input class="form-control" type="email" name="correo" value="{{ correo }}" required>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-secondary" type="submit">Consultar</button>
+  </div>
+</form>
+{% if correo %}
+<p>Resultados para {{ correo_enmascarado }}</p>
+<table class="table table-sm">
+  <thead><tr><th>Id</th><th>Zona</th><th>Tipo</th><th>Activa</th><th>Confirmada</th><th></th></tr></thead>
+  <tbody>
+  {% for s in propias %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td>{{ s.nombre }}</td>
+      <td>{{ s.tipo }}</td>
+      <td>{{ s.activa }}</td>
+      <td>{{ s.confirmada }}</td>
+      <td>
+        {% if s.activa %}
+        <form method="post" action="/suscripciones/{{ s.id }}/baja">
+          <input type="hidden" name="correo" value="{{ correo }}">
+          <button class="btn btn-sm btn-outline-danger">Dar de baja</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">No hay suscripciones para ese correo.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

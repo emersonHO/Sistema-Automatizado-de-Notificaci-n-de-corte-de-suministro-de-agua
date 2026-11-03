@@ -1,0 +1,35 @@
+:root {
+  --navy: #1b365d;
+  --ink: #1b1b1b;
+  --paper: #f6f3ec;
+  --line: #d7d1c4;
+  --accent: #8c4a2f;
+}
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Segoe UI", "Liberation Sans", sans-serif;
+}
+.navbar {
+  background: var(--navy);
+}
+h1, h2, h3, .navbar-brand {
+  font-family: Georgia, "Times New Roman", serif;
+}
+.card {
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.table {
+  background: #fff;
+}
+.badge-potencial { background: #5c6b7a; }
+.aviso {
+  border-left: 4px solid var(--accent);
+  background: #fff;
+  padding: 0.75rem 1rem;
+}
+footer {
+  color: #5c5c5c;
+  font-size: 0.875rem;
+}

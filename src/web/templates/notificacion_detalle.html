@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Notificación {{ fila.id }}{% endblock %}
+{% block contenido %}
+<h1>Notificación {{ fila.id }}</h1>
+<table class="table table-sm">
+  <tr><th>Incidencia</th><td>{{ fila.interrupcion_id }}</td></tr>
+  <tr><th>Suscripción</th><td>{{ fila.suscripcion_id }} — {{ fila.destinatario }}</td></tr>
+  <tr><th>Zona</th><td>{{ fila.zona }} ({{ fila.zona_tipo }})</td></tr>
+  <tr><th>Evento</th><td>{{ fila.tipo_evento }}</td></tr>
+  <tr><th>Estado</th><td>{{ fila.estado }}</td></tr>
+  <tr><th>Último error</th><td>{{ fila.ultimo_error or '—' }}</td></tr>
+</table>
+<h2 class="h4">Intentos de envío</h2>
+<table class="table table-sm">
+  <thead><tr><th>Fecha</th><th>Resultado</th><th>Modo</th><th>Mensaje</th></tr></thead>
+  <tbody>
+  {% for i in intentos %}
+    <tr><td>{{ i.fecha_intento }}</td><td>{{ i.resultado }}</td><td>{{ i.modo }}</td><td>{{ i.mensaje }}</td></tr>
+  {% else %}
+    <tr><td colspan="4">Sin intentos.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
