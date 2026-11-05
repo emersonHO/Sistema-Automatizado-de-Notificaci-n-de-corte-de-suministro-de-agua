@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}Incidencia {{ fila.id }}{% endblock %}
+{% block contenido %}
+<h1 class="mb-3">Incidencia {{ fila.id }}</h1>
+<p><a href="/interrupciones">Volver al listado</a></p>
+<table class="table table-sm">
+  <tr><th>Código</th><td>{{ fila.cod_incidencia }}</td></tr>
+  <tr><th>Empresa</th><td>{{ fila.empresa }}</td></tr>
+  <tr><th>Ciudad (fuente)</th><td>{{ fila.ciudad }}</td></tr>
+  <tr><th>Distrito</th><td>{{ fila.municipalidad }} (canon: {{ fila.municipalidad_normalizada or '—' }})</td></tr>
+  <tr><th>Ámbito Lima Metropolitana</th><td>{{ fila.ambito_lima }}</td></tr>
+  <tr><th>Tipo</th><td>{{ fila.tipo_incid }}</td></tr>
+  <tr><th>Estado reportado</th><td>{{ fila.estado }}</td></tr>
+  <tr><th>Causa</th><td>{{ fila.causa }}</td></tr>
+  <tr><th>Sector / infor_web</th><td>{{ fila.infor_web }}</td></tr>
+  <tr><th>Áreas afectadas</th><td>{{ fila.areas_afectadas }}</td></tr>
+  <tr><th>Fechas reportadas</th><td>{{ fila.fec_deteccion }} → {{ fila.fec_estimada }}</td></tr>
+  <tr><th>Versión origen / relevante</th><td>{{ fila.version_origen }} / {{ fila.version_relevante }}</td></tr>
+  <tr><th>Primera captura del sistema</th><td>{{ fila.primera_captura }}</td></tr>
+  <tr><th>Última captura del sistema</th><td>{{ fila.ultima_captura }}</td></tr>
+</table>
+<h2 class="h4">Historial de versiones</h2>
+<table class="table table-sm">
+  <thead><tr><th>V. origen</th><th>V. relevante</th><th>Evento</th><th>Relevante</th><th>Campos</th><th>Registro</th></tr></thead>
+  <tbody>
+  {% for h in historial %}
+    <tr>
+      <td>{{ h.version_origen }}</td>
+      <td>{{ h.version_relevante }}</td>
+      <td>{{ h.tipo_evento }}</td>
+      <td>{{ h.cambio_relevante }}</td>
+      <td><pre class="mb-0 small">{{ h.campos_modificados }}</pre></td>
+      <td>{{ h.fecha_registro }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Sin historial.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

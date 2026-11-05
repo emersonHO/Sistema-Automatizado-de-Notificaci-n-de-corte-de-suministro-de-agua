@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titulo %}Notificaciones{% endblock %}
+{% block contenido %}
+<h1 class="mb-3">Notificaciones</h1>
+<p>Los correos se muestran enmascarados. El estado ACEPTADA_SMTP solo indica que el servidor SMTP aceptó el mensaje, no la entrega al buzón.</p>
+<div class="table-responsive">
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>Id</th><th>Incidencia</th><th>Destinatario</th><th>Zona</th>
+      <th>Evento</th><th>Nivel</th><th>Estado</th><th>Intentos</th><th>Creada</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for fila in filas %}
+    <tr>
+      <td><a href="/notificaciones/{{ fila.id }}">{{ fila.id }}</a></td>
+      <td><a href="/interrupciones/{{ fila.interrupcion_id }}">{{ fila.interrupcion_id }}</a></td>
+      <td>{{ fila.destinatario }}</td>
+      <td>{{ fila.zona }} ({{ fila.zona_tipo }})</td>
+      <td>{{ fila.tipo_evento }}</td>
+      <td>{{ fila.nivel_coincidencia }}</td>
+      <td>{{ fila.estado }}</td>
+      <td>{{ fila.intentos }}</td>
+      <td>{{ fila.creada_en }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9">No hay notificaciones.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

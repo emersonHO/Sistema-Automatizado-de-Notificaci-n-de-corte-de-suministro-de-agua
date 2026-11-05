@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def crear_caracteristicas(df):
     df = df.copy()
 
@@ -16,7 +17,7 @@ def crear_caracteristicas(df):
 
     df.loc[
         df["intervalo_fechas_horas"] < 0,
-        "intervalo_fechas_horas"
+        "intervalo_fechas_horas",
     ] = float("nan")
 
     df["dia_semana"] = inicio.dt.dayofweek
