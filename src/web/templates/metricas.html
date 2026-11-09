@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Métricas{% endblock %}
+{% block contenido %}
+<h1>Métricas técnicas</h1>
+<p>La precisión y el recall se calculan únicamente sobre casos etiquetados de prueba, no sobre las predicciones del sistema usadas como verdad de referencia.</p>
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h2 class="h5">Correspondencia territorial (casos etiquetados)</h2>
+      <p>Precisión: {{ correspondencia.precision }}</p>
+      <p>Recall: {{ correspondencia.recall }}</p>
+      <p>VP {{ correspondencia.vp }} / FP {{ correspondencia.fp }} / FN {{ correspondencia.fn }} / VN {{ correspondencia.vn }}</p>
+      <p>Casos: {{ correspondencia.casos }}</p>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h2 class="h5">Detección de cambios (casos etiquetados)</h2>
+      <p>Exactitud origen: {{ cambios.exactitud_origen }}</p>
+      <p>Exactitud relevante: {{ cambios.exactitud_relevante }}</p>
+      <p>Casos: {{ cambios.casos }}</p>
+    </div>
+  </div>
+</div>
+<h2 class="h5 mt-4">Ejecuciones reales en esta base</h2>
+<pre class="bg-white p-3 border">{{ ejecuciones }}</pre>
+{% endblock %}

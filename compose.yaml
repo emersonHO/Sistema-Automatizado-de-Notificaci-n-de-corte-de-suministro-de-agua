@@ -1,0 +1,95 @@
+# Fase 1: db + web + pipeline (perfil).
+# No publica PostgreSQL en el host. No incluye n8n, Mailpit, Prometheus ni Grafana.
+# No usar: docker compose down -v  (borra el volumen de la BD Docker).
+# Interpolación de secretos: docker compose --env-file .env.docker up -d --build
+
+name: notificacion-agua
+
+networks:
+  interna:
+    driver: bridge
+
+volumes:
+  pgdata:
+  capturas:
+
+services:
+  db:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      POSTGRES_DB: ${POSTGRES_DB:-notificaciones_agua}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - interna
+    # Sin "ports": el motor no queda expuesto en el host.
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      WEB_HOST: 0.0.0.0
+      LOG_FORMAT: json
+    volumes:
+      - capturas:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/salud', timeout=4)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+
+  pipeline:
+    build: .
+    profiles: ["pipeline"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      LOG_FORMAT: json
+    volumes:
+      - capturas:/app/data
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.pipeline"]

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Panel principal{% endblock %}
+{% block contenido %}
+<h1 class="mb-4">Panel principal</h1>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card p-3"><div class="text-muted">Interrupciones registradas</div><div class="fs-3">{{ total_interrupciones }}</div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3"><div class="text-muted">Nuevas (14 días, historial)</div><div class="fs-3">{{ nuevas_14d }}</div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3"><div class="text-muted">Modificadas (14 días)</div><div class="fs-3">{{ modificadas_14d }}</div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-3">
+      <div class="text-muted">Notificaciones</div>
+      <div>Pendientes: {{ estados_notif.get('PENDIENTE', 0) }}</div>
+      <div>Simuladas: {{ estados_notif.get('SIMULADA', 0) }}</div>
+      <div>Aceptadas SMTP: {{ estados_notif.get('ACEPTADA_SMTP', 0) }}</div>
+      <div>Fallidas: {{ estados_notif.get('FALLIDA', 0) }}</div>
+    </div>
+  </div>
+</div>
+
+<h2 class="h4">Última ejecución</h2>
+{% if ultima %}
+<table class="table table-sm">
+  <tr><th>Identificador</th><td>{{ ultima.id }}</td></tr>
+  <tr><th>Estado</th><td>{{ ultima.estado }}</td></tr>
+  <tr><th>Inicio</th><td>{{ ultima.fecha_inicio }}</td></tr>
+  <tr><th>Fin</th><td>{{ ultima.fecha_fin }}</td></tr>
+  <tr><th>Leídos / nuevos / actualizados / sin cambios</th>
+      <td>{{ ultima.registros_leidos }} / {{ ultima.registros_nuevos }} / {{ ultima.registros_actualizados }} / {{ ultima.registros_sin_cambios }}</td></tr>
+  <tr><th>Captura completa</th><td>{{ ultima.captura_completa }}</td></tr>
+  <tr><th>Error</th><td>{{ ultima.mensaje_error or '—' }}</td></tr>
+</table>
+{% else %}
+<p>Aún no hay ejecuciones registradas. Ejecute <code>python -m src.pipeline</code>.</p>
+{% endif %}
+
+<h2 class="h4 mt-4">Interrupciones recientes</h2>
+<div class="table-responsive">
+<table class="table table-striped table-sm">
+  <thead><tr>
+    <th>Id</th><th>Código</th><th>Distrito</th><th>Tipo</th><th>Fecha reportada</th><th>Versión</th>
+  </tr></thead>
+  <tbody>
+  {% for fila in recientes %}
+    <tr>
+      <td><a href="/interrupciones/{{ fila.id }}">{{ fila.id }}</a></td>
+      <td>{{ fila.cod_incidencia }}</td>
+      <td>{{ fila.municipalidad }}</td>
+      <td>{{ fila.tipo_incid }}</td>
+      <td>{{ fila.fec_deteccion }}</td>
+      <td>{{ fila.version_relevante }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Sin registros en la base de datos.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

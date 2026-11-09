@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}Ejecuciones{% endblock %}
+{% block contenido %}
+<h1 class="mb-3">Ejecuciones del proceso</h1>
+<div class="table-responsive">
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>Id</th><th>Estado</th><th>Inicio</th><th>Fin</th>
+      <th>Leídos</th><th>Nuevos</th><th>Modificados</th><th>Sin cambios</th>
+      <th>Errores</th><th>Tiempos (ms)</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for fila in filas %}
+    <tr>
+      <td>{{ fila.id }}</td>
+      <td>{{ fila.estado }}</td>
+      <td>{{ fila.fecha_inicio }}</td>
+      <td>{{ fila.fecha_fin }}</td>
+      <td>{{ fila.registros_leidos }}</td>
+      <td>{{ fila.registros_nuevos }}</td>
+      <td>{{ fila.registros_actualizados }}</td>
+      <td>{{ fila.registros_sin_cambios }}</td>
+      <td>{{ fila.mensaje_error or '—' }}</td>
+      <td>
+        desc {{ fila.tiempo_descarga_ms }} /
+        norm {{ fila.tiempo_normalizacion_ms }} /
+        pers {{ fila.tiempo_persistencia_ms }} /
+        corr {{ fila.tiempo_correspondencia_ms }} /
+        notif {{ fila.tiempo_notificaciones_ms }}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10">Sin ejecuciones.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,7 +1,13 @@
 .venv/
 .env
+.env.docker
 __pycache__/
 .ipynb_checkpoints/
 .pytest_cache/
 data/raw/
 data/processed/
+data/simulaciones/
+data/evaluacion/
+*.pyc
+.coverage
+htmlcov/
