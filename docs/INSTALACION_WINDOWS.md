@@ -113,3 +113,49 @@ Puede demostrar el flujo con el fixture:
 ```powershell
 python -m src.pipeline --desde-archivo tests\fixtures\captura_minima.json
 ```
+
+## 7. Docker Compose (fase 1)
+
+Esto **no** usa ni borra el PostgreSQL instalado en Windows. El servicio `db` no publica puerto en el host.
+
+1. Instale Docker Desktop.
+2. En la carpeta del proyecto:
+
+```powershell
+copy .env.docker.example .env.docker
+notepad .env.docker
+```
+
+Defina `POSTGRES_PASSWORD`, `ADMIN_PASSWORD` y `SESSION_SECRET` distintos a los de Windows.
+
+```powershell
+docker compose --env-file .env.docker up -d --build db web
+```
+
+Panel: http://127.0.0.1:8000 — entre con `ADMIN_USER` / `ADMIN_PASSWORD`.
+
+Pipeline (misma imagen, perfil):
+
+```powershell
+docker compose --env-file .env.docker --profile pipeline run --rm pipeline
+```
+
+Captura de prueba (sin llamar a la API):
+
+```powershell
+docker compose --env-file .env.docker --profile pipeline run --rm pipeline python -m src.pipeline --desde-archivo /app/tests/fixtures/captura_minima.json
+```
+
+Repita el comando: no debe crear incidencias duplicadas.
+
+Para detener **sin** borrar el volumen Docker:
+
+```powershell
+docker compose --env-file .env.docker down
+```
+
+**No ejecute** `docker compose down -v` salvo que acepte perder la base Docker.
+
+Atajo: `.\scripts\compose.ps1 up`
+
+La migración desde el PostgreSQL de Windows requiere dump, restore y conteos; no está automatizada (hace falta autorización explícita).

@@ -11,8 +11,10 @@ No reemplaza los canales oficiales de la empresa prestadora. Una coincidencia te
 ## Requisitos
 
 - Python 3.12 o compatible
-- PostgreSQL 16 o compatible
+- PostgreSQL 16 o compatible **o** Docker Desktop para la pila Compose (fase 1)
 - Windows 10/11 para la demostración local prevista (también funciona en Linux)
+
+La pila Docker usa un volumen **nuevo** y **no publica** el puerto de PostgreSQL. No sustituye ni borra el servidor Postgres que ya tenga en Windows.
 
 ## Instalación
 
@@ -51,7 +53,7 @@ python -m src.pipeline --sin-outbox
 
 El envío SMTP real exige `SMTP_ENABLED=true`, `MODO_ENVIO=real` y `--envio-real`. Por defecto el modo es **simulación**: los mensajes se guardan en `data/simulaciones/` y no se contacta a destinatarios reales.
 
-## Aplicación web
+## Aplicación web (sin Docker)
 
 ```powershell
 python -m src.web
@@ -59,7 +61,25 @@ python -m src.web
 
 Abra `http://127.0.0.1:8000`.
 
-Pantallas: panel, interrupciones (con historial), suscripciones (registro, confirmación y baja), notificaciones (correos enmascarados) y ejecuciones.
+Pantallas: panel (administrativo si hay `ADMIN_PASSWORD`), interrupciones, suscripciones, notificaciones y ejecuciones.
+
+## Docker Compose (fase 1)
+
+```powershell
+copy .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build db web
+docker compose --env-file .env.docker --profile pipeline run --rm pipeline python -m src.pipeline --desde-archivo /app/tests/fixtures/captura_minima.json
+```
+
+Detalle en `docs/INSTALACION_WINDOWS.md` sección 7. n8n, Prometheus y Grafana **no** están en esta fase.
+
+## Documentación de arquitectura
+
+- `docs/ARQUITECTURA.md` — núcleo del MVP
+- `docs/ARQUITECTURA_OBJETIVO.md` — diagrama C4/Mermaid objetivo
+- `docs/PLAN_EVOLUCION_ARQUITECTONICA.md` — fases 0–5
+- `docs/DECISIONES_ARQUITECTONICAS.md` — ADRs
+- `docs/DIAGNOSTICO_ARQUITECTURA.md` — auditoría previa
 
 ## Pruebas
 
@@ -79,9 +99,8 @@ Los reportes se escriben en `data/evaluacion/`. Precisión y recall se calculan 
 
 Vea `docs/INSTALACION_WINDOWS.md` y el script `scripts/ejecutar_pipeline.ps1`.
 
-## Documentación
+## Documentación adicional
 
-- `docs/ARQUITECTURA.md`
 - `docs/PLAN_IMPLEMENTACION.md`
 - `docs/PRUEBAS.md`
 - `docs/RESULTADOS_PRUEBAS.md`

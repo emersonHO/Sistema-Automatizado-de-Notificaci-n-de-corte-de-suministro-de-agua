@@ -2,11 +2,14 @@
 {% block titulo %}Suscripciones{% endblock %}
 {% block contenido %}
 <h1 class="mb-3">Suscripciones voluntarias</h1>
-{% if mensaje %}<div class="alert alert-info">{{ mensaje }}</div>{% endif %}
+{% if enlace_confirmacion %}
+<p class="alert alert-warning">Enlace de confirmación (no se envía por SMTP en modo laboratorio). Consérvelo; no se publica en listados: <code>{{ enlace_confirmacion }}</code></p>
+{% endif %}
 <p>El registro es voluntario. Debe confirmar el correo antes de que el sistema considere la suscripción apta para avisos. Por defecto los envíos reales están desactivados.</p>
 
 <h2 class="h5">Registrar o actualizar</h2>
 <form method="post" action="/suscripciones" class="card p-3 mb-4">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
   <div class="mb-3">
     <label class="form-label">Correo</label>
     <input class="form-control" type="email" name="correo" required value="{{ correo }}">
@@ -70,6 +73,7 @@
       <td>
         {% if s.activa %}
         <form method="post" action="/suscripciones/{{ s.id }}/baja">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="correo" value="{{ correo }}">
           <button class="btn btn-sm btn-outline-danger">Dar de baja</button>
         </form>

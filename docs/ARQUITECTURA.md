@@ -1,5 +1,7 @@
 # Arquitectura del MVP
 
+La evolución contenerizada y el diagrama objetivo están en `docs/ARQUITECTURA_OBJETIVO.md`, `docs/PLAN_EVOLUCION_ARQUITECTONICA.md` y `docs/DECISIONES_ARQUITECTONICAS.md`. Este archivo describe el núcleo Python/PostgreSQL que se reutiliza.
+
 ## Estilo
 
 Proceso único en Python, PostgreSQL como almacén y cola transaccional (outbox), interfaz FastAPI + Jinja2 + Bootstrap 5. Sin microservicios, sin React y sin infraestructura de pago.

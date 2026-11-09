@@ -6,7 +6,7 @@
 python -m pytest -q
 ```
 
-Requisito: base PostgreSQL `notificaciones_agua_test` accesible con las mismas credenciales de `.env` salvo el nombre de la base (lo fija `tests/conftest.py`).
+Requisito: base PostgreSQL `notificaciones_agua_test` accesible con las mismas credenciales de `.env` salvo el nombre de la base (lo fija `tests/conftest.py`). Si esa base no existe, pytest **omite** las pruebas de web, pipeline y notificaciones en lugar de abortar toda la suite.
 
 ```sql
 CREATE DATABASE notificaciones_agua_test OWNER agua;

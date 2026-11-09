@@ -34,6 +34,13 @@ SMTP_STARTTLS = os.getenv("SMTP_STARTTLS", "true").lower() in {"1", "true", "yes
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-cambiar-sesion")
+WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+LOG_FORMAT = os.getenv("LOG_FORMAT", "text").strip().lower()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 
 CARPETA_RAW = BASE_DIR / "data" / "raw"
 CARPETA_PROCESSED = BASE_DIR / "data" / "processed"

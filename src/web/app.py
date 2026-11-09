@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from src.config import ADMIN_TOKEN, BASE_URL
+from src.config import BASE_URL, SESSION_SECRET
 from src.db import aplicar_esquema, conectar
+from src.logging_config import configurar_logging
 from src.privacidad import enmascarar_correo
 from src.suscripciones import (
     confirmar_correo,
@@ -28,12 +30,25 @@ from src.web.consultas import (
     listar_notificaciones,
     resumen_panel,
 )
+from src.web.seguridad import (
+    admin_requerido,
+    autenticar,
+    csrf_token,
+    sesion_admin,
+    validar_csrf,
+)
 from src.zonas_lima import DISTRITOS_LIMA
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="Sistema de notificación de interrupciones de agua")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=False,
+)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -41,6 +56,7 @@ if STATIC_DIR.exists():
 
 @app.on_event("startup")
 def _startup():
+    configurar_logging()
     aplicar_esquema()
     conexion = conectar()
     try:
@@ -51,6 +67,7 @@ def _startup():
 
 
 def _ctx(request: Request, **kwargs):
+    flash = request.session.pop("flash", None)
     datos = {
         "request": request,
         "base_url": BASE_URL,
@@ -58,9 +75,20 @@ def _ctx(request: Request, **kwargs):
             "La información procede de una fuente pública de un tercero "
             "y no reemplaza los canales oficiales."
         ),
+        "es_admin": sesion_admin(request),
+        "auth_activa": admin_requerido(),
+        "csrf": csrf_token(request),
+        "flash": flash,
     }
     datos.update(kwargs)
     return datos
+
+
+def _exige_admin(request: Request):
+    if sesion_admin(request):
+        return None
+    siguiente = request.url.path
+    return RedirectResponse("/admin/login?siguiente=" + siguiente, status_code=303)
 
 
 @app.get("/salud")
@@ -71,11 +99,54 @@ def salud():
                 cursor.execute("SELECT 1")
         return {"ok": True, "postgres": True}
     except Exception as error:
-        return {"ok": False, "postgres": False, "error": str(error)}
+        return JSONResponse(
+            {"ok": False, "postgres": False, "error": str(error)},
+            status_code=503,
+        )
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def login_get(request: Request, siguiente: str = "/"):
+    if sesion_admin(request) and admin_requerido():
+        return RedirectResponse(siguiente or "/", status_code=303)
+    return templates.TemplateResponse(
+        "login.html",
+        _ctx(request, siguiente=siguiente or "/"),
+    )
+
+
+@app.post("/admin/login")
+def login_post(
+    request: Request,
+    usuario: str = Form(...),
+    password: str = Form(...),
+    csrf: str = Form(""),
+    siguiente: str = Form("/"),
+):
+    validar_csrf(request, csrf)
+    if not autenticar(usuario, password):
+        return templates.TemplateResponse(
+            "login.html",
+            _ctx(request, siguiente=siguiente, error="Credenciales incorrectas."),
+            status_code=401,
+        )
+    request.session["admin"] = True
+    destino = siguiente if siguiente.startswith("/") else "/"
+    return RedirectResponse(destino, status_code=303)
+
+
+@app.post("/admin/logout")
+def logout(request: Request, csrf: str = Form("")):
+    validar_csrf(request, csrf)
+    request.session.clear()
+    return RedirectResponse("/suscripciones", status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)
 def panel(request: Request):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
     with conectar() as conexion:
         resumen = resumen_panel(conexion)
     return templates.TemplateResponse("panel.html", _ctx(request, **resumen))
@@ -113,6 +184,9 @@ def interrupcion_detalle(request: Request, interrupcion_id: int):
 
 @app.get("/ejecuciones", response_class=HTMLResponse)
 def ejecuciones(request: Request):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
     with conectar() as conexion:
         filas = listar_ejecuciones(conexion)
     return templates.TemplateResponse("ejecuciones.html", _ctx(request, filas=filas))
@@ -120,6 +194,9 @@ def ejecuciones(request: Request):
 
 @app.get("/notificaciones", response_class=HTMLResponse)
 def notificaciones(request: Request):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
     with conectar() as conexion:
         filas = listar_notificaciones(conexion)
     return templates.TemplateResponse("notificaciones.html", _ctx(request, filas=filas))
@@ -127,6 +204,9 @@ def notificaciones(request: Request):
 
 @app.get("/notificaciones/{notificacion_id}", response_class=HTMLResponse)
 def notificacion_detalle(request: Request, notificacion_id: int):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
     with conectar() as conexion:
         filas = [f for f in listar_notificaciones(conexion, limite=1000) if f["id"] == notificacion_id]
         intentos = intentos_de(conexion, notificacion_id)
@@ -143,7 +223,8 @@ def notificacion_detalle(request: Request, notificacion_id: int):
 
 
 @app.get("/suscripciones", response_class=HTMLResponse)
-def suscripciones_get(request: Request, correo: str | None = None, mensaje: str | None = None):
+def suscripciones_get(request: Request, correo: str | None = None):
+    enlace = request.session.pop("enlace_confirmacion", None)
     with conectar() as conexion:
         zonas = listar_zonas_lima(conexion)
         propias = suscripciones_de_correo(correo, conexion) if correo else []
@@ -155,7 +236,7 @@ def suscripciones_get(request: Request, correo: str | None = None, mensaje: str 
             propias=propias,
             correo=correo or "",
             correo_enmascarado=enmascarar_correo(correo) if correo else "",
-            mensaje=mensaje,
+            enlace_confirmacion=enlace,
         ),
     )
 
@@ -164,12 +245,14 @@ def suscripciones_get(request: Request, correo: str | None = None, mensaje: str 
 def suscripciones_post(
     request: Request,
     correo: str = Form(...),
+    csrf: str = Form(""),
     zonas: list[str] = Form(default=[]),
     sector: str = Form(default=""),
     distrito_sector: str = Form(default=""),
     area: str = Form(default=""),
     distrito_area: str = Form(default=""),
 ):
+    validar_csrf(request, csrf)
     seleccion = [{"zona_id": int(z)} for z in zonas if str(z).isdigit()]
     if sector.strip():
         seleccion.append(
@@ -180,26 +263,24 @@ def suscripciones_post(
             {"tipo": "AREA", "nombre": area.strip(), "distrito_padre": distrito_area or None}
         )
     if not seleccion:
-        return RedirectResponse(
-            "/suscripciones?mensaje=" + "Selecciona al menos una zona.",
-            status_code=303,
-        )
+        request.session["flash"] = "Selecciona al menos una zona."
+        return RedirectResponse("/suscripciones", status_code=303)
     with conectar() as conexion:
         resultado = suscribir(correo, seleccion, conexion=conexion)
         conexion.commit()
         usuario = resultado["usuario"]
         token = usuario.get("token_confirmacion")
         if usuario.get("correo_confirmado"):
-            msg = "Suscripción actualizada. El correo ya estaba confirmado."
+            request.session["flash"] = "Suscripción actualizada. El correo ya estaba confirmado."
         else:
-            msg = (
-                "Registro creado. Confirma el correo antes de activar envíos. "
-                f"Enlace de demostración: {BASE_URL}/suscripciones/confirmar/{token}"
+            request.session["flash"] = (
+                "Registro creado. Confirma el correo antes de activar envíos."
             )
-    return RedirectResponse(
-        f"/suscripciones?correo={correo}&mensaje={msg}",
-        status_code=303,
-    )
+            if token:
+                request.session["enlace_confirmacion"] = (
+                    f"{BASE_URL}/suscripciones/confirmar/{token}"
+                )
+    return RedirectResponse("/suscripciones", status_code=303)
 
 
 @app.get("/suscripciones/confirmar/{token}", response_class=HTMLResponse)
@@ -227,16 +308,22 @@ def confirmar(request: Request, token: str):
 
 
 @app.post("/suscripciones/{suscripcion_id}/baja")
-def baja(suscripcion_id: int, correo: str = Form(...)):
+def baja(suscripcion_id: int, request: Request, correo: str = Form(...), csrf: str = Form("")):
+    validar_csrf(request, csrf)
     with conectar() as conexion:
         ok = dar_baja(suscripcion_id, correo, conexion=conexion)
         conexion.commit()
-    msg = "Suscripción dada de baja." if ok else "No se pudo dar de baja (correo no coincidente)."
-    return RedirectResponse(f"/suscripciones?correo={correo}&mensaje={msg}", status_code=303)
+    request.session["flash"] = (
+        "Suscripción dada de baja." if ok else "No se pudo dar de baja (correo no coincidente)."
+    )
+    return RedirectResponse("/suscripciones", status_code=303)
 
 
 @app.get("/metricas", response_class=HTMLResponse)
 def metricas(request: Request):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
     from src.casos_evaluacion import CASOS_CAMBIOS, CASOS_CORRESPONDENCIA
     from src.evaluacion import evaluar_correspondencia_etiquetada, evaluar_deteccion_cambios, metricas_ejecuciones
 

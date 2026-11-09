@@ -264,10 +264,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--envio-real", action="store_true", help="Requiere SMTP_ENABLED=true")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    from src.logging_config import configurar_logging
+
+    configurar_logging()
     try:
         resultado = ejecutar_pipeline(
             dias=args.dias,

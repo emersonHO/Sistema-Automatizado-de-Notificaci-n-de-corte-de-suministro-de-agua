@@ -16,18 +16,33 @@
     </button>
     <div class="collapse navbar-collapse" id="menu">
       <ul class="navbar-nav ms-auto">
+        {% if es_admin %}
         <li class="nav-item"><a class="nav-link" href="/">Panel</a></li>
+        {% endif %}
         <li class="nav-item"><a class="nav-link" href="/interrupciones">Interrupciones</a></li>
         <li class="nav-item"><a class="nav-link" href="/suscripciones">Suscripciones</a></li>
+        {% if es_admin %}
         <li class="nav-item"><a class="nav-link" href="/notificaciones">Notificaciones</a></li>
         <li class="nav-item"><a class="nav-link" href="/ejecuciones">Ejecuciones</a></li>
         <li class="nav-item"><a class="nav-link" href="/metricas">Métricas</a></li>
+        {% endif %}
+        {% if auth_activa and es_admin %}
+        <li class="nav-item">
+          <form method="post" action="/admin/logout" class="d-inline">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="btn btn-link nav-link" type="submit">Salir</button>
+          </form>
+        </li>
+        {% elif auth_activa %}
+        <li class="nav-item"><a class="nav-link" href="/admin/login">Administración</a></li>
+        {% endif %}
       </ul>
     </div>
   </div>
 </nav>
 <main class="container pb-5">
   <p class="aviso mb-4">{{ aviso_fuente }}</p>
+  {% if flash %}<div class="alert alert-info">{{ flash }}</div>{% endif %}
   {% block contenido %}{% endblock %}
 </main>
 <footer class="container pb-4">

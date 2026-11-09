@@ -64,3 +64,25 @@ Estos valores miden únicamente los casos de `src/casos_evaluacion.py`, no el un
 ## Limitaciones de latencia de detección
 
 La fuente no documenta una fecha de publicación contractual. `fec_deteccion` no se usa como publicación. La latencia publicación→observación no se calcula sobre la API real; solo podría medirse en pruebas controladas con marcas de tiempo inyectadas.
+
+## Fase 1 — contenerización (8 nov 2026, America/Lima)
+
+Entorno del agente: **sin Docker** (`docker` no está en PATH ni hay socket) y **sin PostgreSQL local**. No se declara éxito de Compose ni de pytest de integración.
+
+Comando: `python3 -m pytest -q`
+
+```
+14 passed, 7 skipped, 1 warning in 0.57s
+```
+
+Las 7 omitidas son las que requieren `notificaciones_agua_test` (`test_web`, `test_pipeline`, `test_notificaciones` y fixtures `conexion`). Las 14 restantes cubren recolector, normalizador, correspondencia y hashes.
+
+Validación estática: `compose.yaml` se cargó como YAML; el servicio `db` no declara `ports`; existen `web` y `pipeline` (perfil).
+
+Pendiente en una máquina con Docker Desktop y Postgres de prueba:
+
+- `docker compose --env-file .env.docker up -d --build db web`
+- healthcheck de `db` y `web`
+- `docker compose --env-file .env.docker --profile pipeline run --rm pipeline python -m src.pipeline --desde-archivo /app/tests/fixtures/captura_minima.json` dos veces (idempotencia)
+- persistencia del volumen `capturas` tras `docker compose down` **sin** `-v`
+- pytest completo (21 casos, incluido el login administrativo)
