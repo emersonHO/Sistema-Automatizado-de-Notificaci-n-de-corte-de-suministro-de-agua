@@ -78,3 +78,10 @@ def test_reintentos(monkeypatch):
     datos = obtener_datos(dias=1, sesion=sesion)
     assert datos["ok"] is True
     assert sesion.calls == 2
+
+
+def test_parametro_dias_cero_es_url_base():
+    from src.recolector import parametro_dias
+
+    assert parametro_dias(0) is None
+    assert parametro_dias(14) == 14

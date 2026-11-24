@@ -24,6 +24,11 @@ body {
 .pub-marca { color: #fff; text-decoration: none; font-family: Georgia, serif; font-size: 1.15rem; }
 .pub-nav nav { display: flex; flex-wrap: wrap; gap: .75rem 1.1rem; }
 .pub-nav nav a { color: #e8eef4; text-decoration: none; font-size: .95rem; }
+.pub-kicker { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; color: var(--accent); font-weight: 700; margin: 0 0 .4rem; }
+.pub-hint { color: var(--muted); font-size: .95rem; }
+.pub-fieldset { border: 0; margin: 1rem 0 0; padding: 0; }
+.pub-fieldset legend { font-weight: 600; }
+.pub-btn:disabled { opacity: .7; cursor: wait; }
 .pub-hero { padding: 2.5rem 0 1rem; }
 .pub-hero h1 { font-family: Georgia, serif; color: var(--navy); font-size: clamp(1.6rem, 4vw, 2.3rem); margin: 0 0 .75rem; }
 .pub-hero p { max-width: 42rem; color: var(--muted); }

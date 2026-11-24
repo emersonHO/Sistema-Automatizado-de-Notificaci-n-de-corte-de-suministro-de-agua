@@ -1,6 +1,8 @@
 # n8n (Fase 2)
 
-UI: http://127.0.0.1:5678  
+n8n **sigue siendo el orquestador local** (Compose). En Render Free no hay n8n: el intervalo de 15 minutos lo cubre GitHub Actions con `python -m src.ciclo_produccion` (misma cola y mismo `ejecutar_pipeline`). No active `pipeline-programado.json` contra la base de Render a la vez que Actions.
+
+UI local: http://127.0.0.1:5678  
 FastAPI interno: `http://web:8000` (red Compose).  
 El token **no** va en los JSON. Se guarda como credencial Header Auth en el SQLite de n8n (`n8n_data`).
 

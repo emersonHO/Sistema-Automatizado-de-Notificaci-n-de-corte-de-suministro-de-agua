@@ -23,9 +23,10 @@ COPY tests ./tests
 COPY n8n/workflows ./n8n/workflows
 COPY pytest.ini .
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod 755 /entrypoint.sh \
+COPY scripts/start-web.sh /app/scripts/start-web.sh
+RUN chmod 755 /entrypoint.sh /app/scripts/start-web.sh \
     && mkdir -p /app/data/raw /app/data/processed /app/data/simulaciones /app/data/evaluacion \
     && chown -R appuser:appuser /app
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "-m", "uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/scripts/start-web.sh"]

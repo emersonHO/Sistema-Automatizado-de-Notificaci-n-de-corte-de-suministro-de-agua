@@ -80,3 +80,24 @@ def test_interno_sin_configurar(conexion, monkeypatch):
         headers={"Authorization": "Bearer x"},
     )
     assert r.status_code == 503
+
+
+def test_ciclo_exige_token(conexion, monkeypatch):
+    from src import config as cfg
+    from src.web import interno as interno_mod
+
+    monkeypatch.setattr(cfg, "INTERNAL_API_TOKEN", "token-interno-test")
+    monkeypatch.setattr(interno_mod.config, "INTERNAL_API_TOKEN", "token-interno-test")
+    cliente = TestClient(app)
+    assert cliente.post("/internal/v1/ciclo").status_code == 401
+
+    def falso(**_k):
+        return {"ok": True, "pipelines_procesados": 0, "lotes_notificacion": 0}
+
+    monkeypatch.setattr("src.ciclo_produccion.ejecutar_ciclo", falso)
+    r = cliente.post(
+        "/internal/v1/ciclo",
+        headers={"Authorization": "Bearer token-interno-test", "Idempotency-Key": "ciclo-test-01xx"},
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True

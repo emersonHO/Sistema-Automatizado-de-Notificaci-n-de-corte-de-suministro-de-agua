@@ -225,6 +225,22 @@ def resumenes_api(authorization: str | None = Header(default=None)):
     return {"ok": True, **data}
 
 
+@router.post("/ciclo")
+def ciclo_interno(
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    """Encola y procesa un ciclo. En Render Free el HTTP puede cortarse a ~30 s; preferir GitHub Actions con src.ciclo_produccion."""
+    exigir_token(authorization)
+    import os
+
+    if idempotency_key:
+        os.environ["IDEMPOTENCY_KEY"] = idempotency_key
+    from src.ciclo_produccion import ejecutar_ciclo
+
+    return ejecutar_ciclo(origen="PROGRAMADA", encolar=True)
+
+
 @router.post("/alertas-admin")
 def alertas_admin(authorization: str | None = Header(default=None)):
     exigir_token(authorization)

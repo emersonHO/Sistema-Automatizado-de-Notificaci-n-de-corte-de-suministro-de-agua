@@ -13,15 +13,35 @@ from src import config
 logger = logging.getLogger(__name__)
 
 
+def conninfo() -> str:
+    url = (config.DATABASE_URL or "").strip()
+    if url:
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://") :]
+        ssl = config.DB_SSLMODE or ("require" if config.EN_RENDER else "")
+        if ssl and "sslmode=" not in url:
+            union = "&" if "?" in url else "?"
+            url = f"{url}{union}sslmode={ssl}"
+        return url
+    partes = [
+        f"host={config.DB_HOST}",
+        f"port={config.DB_PORT}",
+        f"dbname={config.DB_NAME}",
+        f"user={config.DB_USER}",
+        f"password={config.DB_PASSWORD}",
+        "connect_timeout=10",
+    ]
+    if config.DB_SSLMODE:
+        partes.append(f"sslmode={config.DB_SSLMODE}")
+    return " ".join(partes)
+
+
 def dsn() -> str:
-    return (
-        f"host={config.DB_HOST} port={config.DB_PORT} dbname={config.DB_NAME} "
-        f"user={config.DB_USER} password={config.DB_PASSWORD} connect_timeout=10"
-    )
+    return conninfo()
 
 
 def conectar(row_factory=None):
-    conexion = psycopg.connect(dsn())
+    conexion = psycopg.connect(conninfo())
     if row_factory is not None:
         conexion.row_factory = row_factory
     return conexion

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from src.config import PUBLIC_REVELAR_ENLACE
+from src.config import PUBLIC_REVELAR_ENLACE, TRUST_PROXY
 from src.url_publica import url_base
 from src.ciudadano import (
     MENSAJE_GENERICO,
@@ -16,6 +16,7 @@ from src.ciudadano import (
     avisar_baja,
     cancelar_todo,
     confirmar_publico,
+    enviar_correo_alta,
     listar_prefs,
     reenviar_confirmacion,
     registrar_publico,
@@ -33,6 +34,10 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 
 
 def _ip(request: Request) -> str:
+    if TRUST_PROXY:
+        reenviada = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if reenviada:
+            return reenviada[:64]
     return (request.client.host if request.client else "0.0.0.0")[:64]
 
 
@@ -67,8 +72,8 @@ def suscribir_post(
     csrf: str = Form(""),
     distrito: str = Form(...),
     consentimiento: str = Form(default=""),
-    alerta_nueva: str = Form(default="on"),
-    alerta_modificada: str = Form(default="on"),
+    alerta_nueva: str = Form(default=""),
+    alerta_modificada: str = Form(default=""),
     alerta_cancelacion: str = Form(default=""),
     resumen_diario: str = Form(default=""),
     website: str = Form(default=""),
@@ -87,8 +92,8 @@ def suscribir_post(
                 correo,
                 [{"zona_id": int(distrito)}] if str(distrito).isdigit() else [],
                 consentimiento=consentimiento in {"on", "true", "1", "si", "sí"},
-                alerta_nueva=alerta_nueva in {"", "on", "true", "1"},
-                alerta_modificada=alerta_modificada in {"", "on", "true", "1"},
+                alerta_nueva=alerta_nueva in {"on", "true", "1"},
+                alerta_modificada=alerta_modificada in {"on", "true", "1"},
                 alerta_cancelacion=alerta_cancelacion in {"on", "true", "1"},
                 resumen_diario=resumen_diario in {"on", "true", "1"},
                 conexion=conexion,
@@ -102,11 +107,12 @@ def suscribir_post(
             conexion.rollback()
             request.session["flash"] = MENSAJE_GENERICO
             return RedirectResponse("/#suscribir", status_code=303)
+    resultado = enviar_correo_alta(resultado)
     mensaje = resultado["mensaje"]
     if resultado.get("smtp") is False:
         mensaje = (
-            "El registro se guardó, pero no se envió correo: SMTP no está configurado "
-            "para operación pública."
+            "Tu registro se guardó. No pudimos enviar el correo ahora; "
+            "usa «Reenviar confirmación» en unos minutos o avisa al operador."
         )
     if PUBLIC_REVELAR_ENLACE and resultado.get("token"):
         mensaje += f" Enlace de laboratorio: {url_base()}/confirmar/{resultado['token']}"
@@ -122,8 +128,9 @@ def reenviar(request: Request, correo: str = Form(...), csrf: str = Form(""), we
             conexion.commit()
             request.session["flash"] = MENSAJE_GENERICO
             return RedirectResponse("/", status_code=303)
-        reenviar_confirmacion(correo, conexion)
+        resultado = reenviar_confirmacion(correo, conexion)
         conexion.commit()
+    enviar_correo_alta(resultado)
     request.session["flash"] = MENSAJE_GENERICO
     return RedirectResponse("/", status_code=303)
 
@@ -240,7 +247,10 @@ def baja_post(request: Request, token: str, csrf: str = Form(""), confirmar: str
             return RedirectResponse("/", status_code=303)
         cancelar_todo(usuario["id"], conexion)
         conexion.commit()
+    try:
         avisar_baja(usuario["correo"])
+    except Exception:
+        pass
     return templates.TemplateResponse(
         "publico/mensaje.html",
         _ctx(request, titulo="Suscripción cancelada", mensaje="No enviaremos más avisos a ese correo. El historial interno se conserva con el correo enmascarado en auditoría."),

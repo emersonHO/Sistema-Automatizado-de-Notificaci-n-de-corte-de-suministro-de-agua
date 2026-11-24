@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block titulo %}Interrupciones{% endblock %}
 {% block contenido %}
-<h1 class="mb-3">Interrupciones</h1>
+<h1 class="mb-2">Interrupciones</h1>
+<p class="text-muted">{{ total }} registro{{ 's' if total != 1 else '' }} en esta consulta. La fuente pública entrega como máximo 500 filas por respuesta; no es el histórico completo. Fechas según la fuente, no confirmadas en el predio.</p>
 <form class="row g-2 mb-3" method="get">
-  <div class="col-md-4">
+  <div class="col-md-3">
     <label class="form-label">Distrito</label>
     <select class="form-select" name="distrito">
       <option value="">Todos</option>
@@ -12,38 +13,70 @@
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <label class="form-label">Tipo</label>
-    <input class="form-control" name="tipo" value="{{ tipo }}" placeholder="PROGRAMADA">
+    <select class="form-select" name="tipo">
+      <option value="">Todos</option>
+      <option value="PROGRAMADA" {% if tipo == 'PROGRAMADA' %}selected{% endif %}>Programada</option>
+      <option value="IMPREVISTA" {% if tipo == 'IMPREVISTA' %}selected{% endif %}>Imprevista</option>
+    </select>
   </div>
-  <div class="col-md-2 d-flex align-items-end">
+  <div class="col-md-2">
+    <label class="form-label">Vigencia</label>
+    <select class="form-select" name="vigencia">
+      <option value="">Todas (lote almacenado)</option>
+      <option value="futura" {% if vigencia == 'futura' %}selected{% endif %}>Con fecha de detección futura</option>
+      <option value="reciente" {% if vigencia == 'reciente' %}selected{% endif %}>Actualizadas o detectadas (7 días)</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Sector</label>
+    <input class="form-control" name="sector" value="{{ sector }}" placeholder="p. ej. 212">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Área o texto</label>
+    <input class="form-control" name="q" value="{{ q }}" placeholder="urbanización, A.H., calle">
+  </div>
+  <div class="col-12 d-flex gap-2">
     <button class="btn btn-primary" type="submit">Filtrar</button>
+    <a class="btn btn-outline-secondary" href="/interrupciones">Limpiar</a>
   </div>
 </form>
 <div class="table-responsive">
 <table class="table table-sm table-striped">
   <thead>
     <tr>
-      <th>Id</th><th>Distrito</th><th>Tipo</th><th>Estado</th>
-      <th>Inicio publicado → restablecimiento estimado</th><th>Áreas</th><th>Sector</th>
+      <th>Id</th><th>Distrito</th><th>Tipo</th>
+      <th>Detección (fuente)</th><th>Estimada (fuente)</th>
+      <th>Áreas</th><th>Sector</th>
     </tr>
   </thead>
   <tbody>
   {% for fila in filas %}
     <tr>
       <td><a href="/interrupciones/{{ fila.id }}">{{ fila.id }}</a></td>
-      <td>{{ fila.municipalidad }}</td>
-      <td>{{ fila.tipo_incid }}</td>
-      <td>{{ fila.estado }}</td>
-      <td>{{ fila.fec_deteccion }} → {{ fila.fec_estimada }}</td>
-      <td>{{ (fila.areas_afectadas or '')[:80] }}</td>
-      <td>{{ fila.infor_web }}</td>
+      <td>{{ fila.municipalidad or '—' }}</td>
+      <td>{{ fila.tipo_incid or '—' }}</td>
+      <td>{{ fila.fec_deteccion or '—' }}</td>
+      <td>{{ fila.fec_estimada or '—' }}</td>
+      <td>{{ (fila.areas_afectadas or '—')[:90] }}</td>
+      <td>{{ fila.sectores_detectados or fila.infor_web or '—' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="7">No hay incidencias con esos filtros.</td></tr>
+    <tr><td colspan="7">No hay incidencias con esos filtros. Si el total almacenado es bajo, ejecute el pipeline contra la URL base de la fuente.</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
-<p class="text-muted">Las fechas son las reportadas por la fuente; no se interpretan como inicio o restauración confirmados.</p>
+{% if paginas > 1 %}
+<nav class="d-flex gap-2 align-items-center">
+  {% if pagina > 1 %}
+  <a class="btn btn-sm btn-outline-primary" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina - 1 }}">Anterior</a>
+  {% endif %}
+  <span>Página {{ pagina }} de {{ paginas }}</span>
+  {% if pagina < paginas %}
+  <a class="btn btn-sm btn-outline-primary" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina + 1 }}">Siguiente</a>
+  {% endif %}
+</nav>
+{% endif %}
 {% endblock %}

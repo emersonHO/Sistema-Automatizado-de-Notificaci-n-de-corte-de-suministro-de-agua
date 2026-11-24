@@ -18,7 +18,7 @@ from pathlib import Path
 
 from psycopg.types.json import Jsonb
 
-from src.config import API_DIAS, CARPETA_RAW, LOCK_KEY
+from src.config import CARPETA_RAW, LOCK_KEY
 from src.logging_config import extra_traza
 from src.db import aplicar_esquema, conectar
 from src.normalizador import dataframe_a_registros, normalizar_captura
@@ -110,6 +110,7 @@ def ejecutar_pipeline(
             ruta_captura = str(ruta)
         tiempos["tiempo_descarga_ms"] = _ms(t0)
         captura_completa = bool(meta.get("captura_completa", True))
+        from src.recolector import parametro_dias
 
         with conexion.cursor() as cursor:
             cursor.execute(
@@ -121,7 +122,7 @@ def ejecutar_pipeline(
                 """,
                 (
                     ejecucion_id,
-                    dias if dias is not None else API_DIAS,
+                    parametro_dias(dias),
                     meta.get("total_reportado"),
                     meta.get("total_recibido"),
                     captura_completa,

@@ -341,6 +341,12 @@ CREATE TABLE IF NOT EXISTS limitacion_solicitudes (
 CREATE INDEX IF NOT EXISTS idx_limitacion_clave_tiempo
     ON limitacion_solicitudes (clave, ocurrida_en DESC);
 
+ALTER TABLE interrupciones ADD COLUMN IF NOT EXISTS areas_partes JSONB;
+ALTER TABLE interrupciones ADD COLUMN IF NOT EXISTS sectores_detectados TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_interrupciones_areas_gin
+ON interrupciones USING GIN (areas_partes);
+
 CREATE TABLE IF NOT EXISTS resumenes_enviados (
     id BIGSERIAL PRIMARY KEY,
     usuario_id BIGINT NOT NULL REFERENCES usuarios (id),

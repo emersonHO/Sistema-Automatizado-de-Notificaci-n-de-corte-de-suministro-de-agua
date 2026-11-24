@@ -7,7 +7,8 @@ import unicodedata
 
 _NO_ALNUM = re.compile(r"[^A-Z0-9\s]")
 _ESPACIOS = re.compile(r"\s+")
-_SECTOR = re.compile(r"\bSECTOR\s*([0-9]{1,6})\b")
+_SEP_AREAS = re.compile(r"[;\n\r|]+")
+_NUMEROS = re.compile(r"\b(\d{1,6})\b")
 
 
 def normalizar_texto(valor: object) -> str:
@@ -24,12 +25,10 @@ def normalizar_texto(valor: object) -> str:
 
 
 def extraer_numero_sector(valor: object) -> str | None:
+    nums = extraer_sectores(valor)
+    if nums:
+        return nums[0]
     texto = normalizar_texto(valor)
-    if not texto:
-        return None
-    encontrado = _SECTOR.search(texto)
-    if encontrado:
-        return encontrado.group(1)
     if texto.isdigit():
         return texto
     return None
@@ -38,7 +37,7 @@ def extraer_numero_sector(valor: object) -> str | None:
 def partir_areas(valor: object) -> list[str]:
     if valor is None:
         return []
-    partes = str(valor).split(";")
+    partes = _SEP_AREAS.split(str(valor))
     resultado = []
     vistos = set()
     for parte in partes:
@@ -47,3 +46,27 @@ def partir_areas(valor: object) -> list[str]:
             vistos.add(normal)
             resultado.append(normal)
     return resultado
+
+
+def extraer_sectores(valor: object) -> list[str]:
+    """Números de sector citados en infor_web (p. ej. 'Sectores 312, 313 y 314')."""
+    texto = normalizar_texto(valor)
+    if "SECTOR" not in texto:
+        return []
+    vistos = []
+    for num in _NUMEROS.findall(texto):
+        if num not in vistos:
+            vistos.append(num)
+    return vistos
+
+
+def resumen_ubicaciones(areas_afectadas: object, infor_web: object) -> dict:
+    partes = partir_areas(areas_afectadas)
+    sectores = extraer_sectores(infor_web)
+    original = "" if areas_afectadas is None else str(areas_afectadas).strip()
+    return {
+        "texto_original": original or None,
+        "partes": partes,
+        "sectores": sectores,
+        "confianza": "parcial" if (original and not partes and not sectores) else "extraida",
+    }

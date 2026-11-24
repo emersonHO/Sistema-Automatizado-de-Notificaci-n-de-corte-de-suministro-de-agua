@@ -46,39 +46,99 @@ def resumen_panel(conexion) -> dict:
             """
         )
         hist = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT
+              COUNT(*) FILTER (WHERE ambito_lima) AS lima,
+              COUNT(*) FILTER (WHERE upper(tipo_incid) = 'PROGRAMADA') AS programadas,
+              COUNT(*) FILTER (WHERE upper(tipo_incid) = 'IMPREVISTA') AS imprevistas
+            FROM interrupciones
+            """
+        )
+        dist = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT total_recibido, total_reportado, captura_completa, last_sync, fecha_captura
+            FROM capturas ORDER BY id DESC LIMIT 1
+            """
+        )
+        ultima_captura = cursor.fetchone()
+        cursor.execute("SELECT COUNT(*) AS n FROM usuarios WHERE activo")
+        usuarios_n = cursor.fetchone()["n"]
+        cursor.execute("SELECT COUNT(*) AS n FROM suscripciones WHERE activa AND confirmada")
+        sus_n = cursor.fetchone()["n"]
     return {
         "total_interrupciones": total,
+        "lima": dist["lima"] if dist else 0,
+        "programadas": dist["programadas"] if dist else 0,
+        "imprevistas": dist["imprevistas"] if dist else 0,
         "ultima": ultima,
+        "ultima_captura": ultima_captura,
         "estados_notif": estados,
         "recientes": recientes,
         "nuevas_14d": hist["nuevas"] if hist else 0,
         "modificadas_14d": hist["modificadas"] if hist else 0,
+        "usuarios_activos": usuarios_n,
+        "suscripciones_confirmadas": sus_n,
     }
 
 
-def listar_interrupciones(conexion, distrito=None, tipo=None, limite=200):
+def listar_interrupciones(
+    conexion,
+    distrito=None,
+    tipo=None,
+    q=None,
+    sector=None,
+    vigencia=None,
+    pagina=1,
+    limite=50,
+):
     filtros = []
     params: list = []
     if distrito:
         filtros.append("municipalidad_normalizada = %s")
         params.append(distrito.strip().upper())
     if tipo:
-        filtros.append("tipo_incid = %s")
+        filtros.append("upper(tipo_incid) = %s")
         params.append(tipo.strip().upper())
+    if sector:
+        filtros.append("sectores_detectados ILIKE %s")
+        params.append(f"%{sector.strip()}%")
+    if q:
+        filtros.append(
+            "(areas_afectadas ILIKE %s OR infor_web ILIKE %s OR municipalidad ILIKE %s OR causa ILIKE %s)"
+        )
+        like = f"%{q.strip()}%"
+        params.extend([like, like, like, like])
+    if vigencia == "futura":
+        filtros.append("fec_deteccion > NOW()")
+    elif vigencia == "reciente":
+        filtros.append("(fec_deteccion >= NOW() - INTERVAL '7 days' OR actualizado_en_fuente >= NOW() - INTERVAL '7 days')")
     where = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    pagina = max(1, int(pagina or 1))
+    limite = min(100, max(1, int(limite or 50)))
+    offset = (pagina - 1) * limite
     sql = f"""
         SELECT id, cod_incidencia, municipalidad, tipo_incid, estado, causa,
                areas_afectadas, infor_web, fec_deteccion, fec_estimada,
-               ambito_lima, version_relevante, ultima_captura
+               ambito_lima, version_relevante, ultima_captura, sectores_detectados
         FROM interrupciones
         {where}
-        ORDER BY fec_deteccion DESC NULLS LAST
-        LIMIT %s
+        ORDER BY COALESCE(actualizado_en_fuente, fec_deteccion) DESC NULLS LAST, id DESC
+        LIMIT %s OFFSET %s
     """
-    params.append(limite)
     with conexion.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(sql, params)
-        return list(cursor.fetchall())
+        cursor.execute(f"SELECT COUNT(*) AS n FROM interrupciones {where}", params)
+        total = cursor.fetchone()["n"]
+        cursor.execute(sql, [*params, limite, offset])
+        filas = list(cursor.fetchall())
+    return {
+        "filas": filas,
+        "total": total,
+        "pagina": pagina,
+        "limite": limite,
+        "paginas": max(1, (total + limite - 1) // limite),
+    }
 
 
 def detalle_interrupcion(conexion, interrupcion_id: int):

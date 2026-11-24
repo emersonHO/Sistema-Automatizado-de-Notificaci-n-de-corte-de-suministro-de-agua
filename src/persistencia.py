@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 from src.config import CAMPOS_ORIGEN, CAMPOS_RELEVANTES, ESTADOS_CANCELACION
 from src.db import conectar as db_conectar
 from src.hashes import campos_modificados, hash_origen, hash_relevante, hash_tecnico
-from src.texto import normalizar_texto
+from src.texto import normalizar_texto, resumen_ubicaciones
 from src.zonas_lima import canonizar_distrito, es_ambito_lima
 from src.config import CARPETA_PROCESSED
 
@@ -123,6 +123,8 @@ def _insertar_historial(cursor, interrupcion_id, version_origen, version_relevan
 
 
 def procesar_registro(cursor, registro: Mapping) -> dict:
+    if registro.get("id") is None:
+        raise ValueError("incidencia sin id")
     identificador = int(registro["id"])
     h_origen = hash_origen(registro)
     h_rel = hash_relevante(registro)
@@ -130,6 +132,9 @@ def procesar_registro(cursor, registro: Mapping) -> dict:
     canon, _estado_dist = canonizar_distrito(registro.get("municipalidad"))
     ambito = es_ambito_lima(registro.get("municipalidad"))
     datos = registro_a_json(registro)
+    ubic = resumen_ubicaciones(registro.get("areas_afectadas"), registro.get("infor_web"))
+    partes_json = Jsonb({"partes": ubic["partes"], "confianza": ubic["confianza"]})
+    sectores_txt = ",".join(ubic["sectores"]) or None
 
     cursor.execute(
         """
@@ -150,11 +155,11 @@ def procesar_registro(cursor, registro: Mapping) -> dict:
                 areas_afectadas, tipo_incid, estado, infor_web, causa, ciudad,
                 fec_deteccion, fec_estimada, actualizado_en_fuente, ambito_lima,
                 datos, hash_contenido, hash_origen, hash_relevante,
-                version_origen, version_relevante
+                version_origen, version_relevante, areas_partes, sectores_detectados
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, 1, 1
+                %s, %s, %s, %s, %s, %s, %s, %s, 1, 1, %s, %s
             )
             """,
             (
@@ -177,6 +182,8 @@ def procesar_registro(cursor, registro: Mapping) -> dict:
                 h_tec,
                 h_origen,
                 h_rel,
+                partes_json,
+                sectores_txt,
             ),
         )
         _insertar_historial(
@@ -250,7 +257,9 @@ def procesar_registro(cursor, registro: Mapping) -> dict:
             hash_relevante = %s,
             version_origen = %s,
             version_relevante = %s,
-            ultima_captura = NOW()
+            ultima_captura = NOW(),
+            areas_partes = %s,
+            sectores_detectados = %s
         WHERE id = %s
         """,
         (
@@ -274,6 +283,8 @@ def procesar_registro(cursor, registro: Mapping) -> dict:
             h_rel,
             nueva_ver_origen,
             nueva_ver_rel,
+            partes_json,
+            sectores_txt,
             identificador,
         ),
     )
@@ -314,12 +325,20 @@ def persistir_registros(registros: list[Mapping], conexion=None, ejecucion_id: i
         "cambios_origen": 0,
         "cambios_relevantes": 0,
         "cambios_tecnicos": 0,
+        "rechazado": 0,
     }
     eventos = []
     try:
         with conexion.cursor() as cursor:
             for registro in registros:
-                detalle = procesar_registro(cursor, registro)
+                try:
+                    if registro.get("id") is None:
+                        raise ValueError("sin id")
+                    detalle = procesar_registro(cursor, registro)
+                except Exception:
+                    logger.exception("Registro omitido del lote")
+                    contadores["rechazado"] += 1
+                    continue
                 contadores[detalle["resultado"]] += 1
                 if detalle["cambio_origen"]:
                     contadores["cambios_origen"] += 1

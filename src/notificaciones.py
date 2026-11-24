@@ -471,9 +471,10 @@ def procesar_reclamada(
                 )
                 estado = "ACEPTADA_SMTP"
                 resultado = "ACEPTADA_SMTP"
+                canal = "resend" if modo_canal() == "resend" else "smtp"
                 cursor.execute(
-                    "UPDATE notificaciones SET canal = 'smtp' WHERE id = %s",
-                    (fila["id"],),
+                    "UPDATE notificaciones SET canal = %s WHERE id = %s",
+                    (canal, fila["id"]),
                 )
             else:
                 from src.config import OPERACION_PUBLICA

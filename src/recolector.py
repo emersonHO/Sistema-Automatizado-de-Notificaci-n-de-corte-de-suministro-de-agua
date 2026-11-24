@@ -1,7 +1,8 @@
 """Cliente HTTP para la fuente pública de interrupciones.
 
-La API consultada pertenece a un tercero (cortedeagua.net.pe).
-No debe describirse como API oficial de SEDAPAL.
+La API pertenece a un tercero (cortedeagua.net.pe), no es oficial de SEDAPAL.
+Por defecto se consulta la URL base sin parámetros: el lote observado es de
+hasta 500 registros. `dias` solo se envía si es un entero > 0.
 """
 
 from __future__ import annotations
@@ -28,8 +29,16 @@ from src.config import (
 logger = logging.getLogger(__name__)
 
 URL = API_URL
-DIAS = API_DIAS
 CARPETA_RAW.mkdir(parents=True, exist_ok=True)
+
+CABECERAS = {
+    "Accept": "application/json, text/plain;q=0.9, */*;q=0.8",
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; AvisosAguaLima/1.0; "
+        "proyecto academico; +https://github.com/emersonHO/"
+        "Sistema-Automatizado-de-Notificaci-n-de-corte-de-suministro-de-agua)"
+    ),
+}
 
 
 class CapturaIncompletaError(Exception):
@@ -44,9 +53,16 @@ def _ahora_local() -> datetime:
     return datetime.now(ZoneInfo(ZONA_SISTEMA))
 
 
+def parametro_dias(dias: int | None = None) -> int | None:
+    if dias is not None:
+        return int(dias) if int(dias) > 0 else None
+    return API_DIAS
+
+
 def obtener_datos(dias: int | None = None, sesion: requests.Session | None = None) -> dict:
-    """Consulta la API con reintentos limitados y backoff lineal."""
-    parametro = API_DIAS if dias is None else dias
+    """Consulta la API. Sin `dias` (o 0) usa la URL base."""
+    elegido = parametro_dias(dias)
+    params = {"dias": elegido} if elegido else None
     cliente = sesion or requests
     ultimo_error: Exception | None = None
 
@@ -54,9 +70,15 @@ def obtener_datos(dias: int | None = None, sesion: requests.Session | None = Non
         try:
             respuesta = cliente.get(
                 API_URL,
-                params={"dias": parametro},
+                params=params,
                 timeout=API_TIMEOUT,
+                headers=CABECERAS,
             )
+            if respuesta.status_code == 403:
+                raise RespuestaFuenteError(
+                    "La fuente rechazó la consulta (HTTP 403). "
+                    "Algunos proveedores bloquean IPs automatizadas (Imunify360)."
+                )
             respuesta.raise_for_status()
             try:
                 datos = respuesta.json()
@@ -97,6 +119,7 @@ def analizar_completitud(datos: dict) -> dict:
     total_reportado = datos.get("total")
     anomalias: list[str] = []
     completa = True
+    tope = False
 
     if total_reportado is not None:
         try:
@@ -113,8 +136,12 @@ def analizar_completitud(datos: dict) -> dict:
                     "la captura no se considera completa."
                 )
             elif total_recibido > total_reportado_int:
+                anomalias.append("Se recibieron más registros que el total reportado.")
+            if total_recibido == total_reportado_int == 500:
+                tope = True
                 anomalias.append(
-                    "Se recibieron más registros que el total reportado."
+                    "La fuente entrega un tope de 500 registros; no hay paginación "
+                    "comprobada. No se afirma cobertura histórica total."
                 )
     else:
         total_reportado_int = None
@@ -124,9 +151,14 @@ def analizar_completitud(datos: dict) -> dict:
         "total_recibido": total_recibido,
         "total_reportado": total_reportado_int,
         "captura_completa": completa,
+        "tope_500": tope,
         "anomalias": anomalias,
         "last_sync": datos.get("last_sync"),
         "last_new_at": datos.get("last_new_at"),
+        "nota_last_sync": (
+            "last_sync no se usa para omitir la consulta: en observaciones "
+            "quedó desfasado respecto de fec_deteccion/actualizado_en."
+        ),
     }
 
 
@@ -137,6 +169,7 @@ def guardar_respuesta(datos: dict, dias: int | None = None, extra_meta: dict | N
     ruta = CARPETA_RAW / f"{nombre}.json"
     ruta_meta = CARPETA_RAW / f"{nombre}.meta.json"
     completitud = analizar_completitud(datos)
+    elegido = parametro_dias(dias)
 
     with open(ruta, "w", encoding="utf-8") as archivo:
         json.dump(datos, archivo, ensure_ascii=False, indent=2)
@@ -149,10 +182,12 @@ def guardar_respuesta(datos: dict, dias: int | None = None, extra_meta: dict | N
         "nota_fuente": (
             "Fuente pública de un tercero. No es una API oficial de SEDAPAL."
         ),
-        "parametro_dias": API_DIAS if dias is None else dias,
+        "parametro_dias": elegido,
+        "consulta": API_URL if not elegido else f"{API_URL}?dias={elegido}",
         "total_recibido": completitud["total_recibido"],
         "total_reportado": completitud["total_reportado"],
         "captura_completa": completitud["captura_completa"],
+        "tope_500": completitud.get("tope_500"),
         "anomalias": completitud["anomalias"],
         "last_sync": completitud["last_sync"],
         "last_new_at": completitud["last_new_at"],
@@ -186,18 +221,14 @@ def recolectar(dias: int | None = None, sesion: requests.Session | None = None) 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    print("=" * 60)
-    print("RECOLECTOR DE INTERRUPCIONES DE AGUA")
-    print("=" * 60)
     print("Fuente (tercero):", API_URL)
-    print("Parámetro dias:", API_DIAS)
+    print("Parámetro dias (None = URL base):", parametro_dias())
     datos, ruta, meta = recolectar()
-    print("Consulta realizada correctamente")
     print("Registros obtenidos:", meta.get("total_recibido"))
     print("Total reportado:", meta.get("total_reportado"))
     print("Captura completa:", meta.get("captura_completa"))
-    print("Datos almacenados en:", ruta)
-    print("Proyecto base:", BASE_DIR)
+    print("Datos:", ruta)
+    print("Proyecto:", BASE_DIR)
 
 
 if __name__ == "__main__":

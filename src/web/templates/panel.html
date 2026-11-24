@@ -6,13 +6,13 @@
 <p class="text-muted">Cifras leídas de PostgreSQL. SIMULADA no es un correo leído. ACEPTADA_SMTP no confirma lectura del buzón.</p>
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
-    <div class="card kpi p-3"><div class="text-muted">Interrupciones</div><div class="fs-3">{{ total_interrupciones }}</div></div>
+    <div class="card kpi p-3"><div class="text-muted">Almacenadas (histórico local)</div><div class="fs-3">{{ total_interrupciones }}</div><div class="small">Lima: {{ lima }} · Prog. {{ programadas }} · Impr. {{ imprevistas }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="card kpi p-3"><div class="text-muted">Nuevas (14 días)</div><div class="fs-3">{{ nuevas_14d }}</div></div>
+    <div class="card kpi p-3"><div class="text-muted">Eventos NUEVA (14 d)</div><div class="fs-3">{{ nuevas_14d }}</div><div class="small">En historial interno, no es el total de la API</div></div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="card kpi p-3"><div class="text-muted">Modificadas (14 días)</div><div class="fs-3">{{ modificadas_14d }}</div></div>
+    <div class="card kpi p-3"><div class="text-muted">Eventos MODIFICADA (14 d)</div><div class="fs-3">{{ modificadas_14d }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="card kpi p-3">
@@ -39,8 +39,12 @@
   <tr><th>Error</th><td>{{ ultima.mensaje_error or '—' }}</td></tr>
 </table>
 </div>
+{% if ultima_captura %}
+<p class="small text-muted">Última captura: recibidos {{ ultima_captura.total_recibido }} / reportados {{ ultima_captura.total_reportado }} · completa={{ ultima_captura.captura_completa }} · last_sync fuente={{ ultima_captura.last_sync or '—' }} (no se usa para saltar la consulta).</p>
+{% endif %}
+<p class="small">Suscripciones confirmadas: {{ suscripciones_confirmadas }} · usuarios activos: {{ usuarios_activos }}</p>
 {% else %}
-<div class="vacio">Aún no hay ejecuciones. Use n8n o el perfil <code>pipeline</code> con un fixture.</div>
+<div class="vacio">Aún no hay ejecuciones. En local: <code>docker compose --env-file .env.docker --profile pipeline run --rm pipeline python -m src.pipeline --sin-outbox</code></div>
 {% endif %}
 
 <h2 class="h5 mt-4">Interrupciones recientes</h2>

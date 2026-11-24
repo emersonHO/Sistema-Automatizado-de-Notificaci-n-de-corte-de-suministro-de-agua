@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.rows import dict_row
 
+from email_validator import EmailNotValidError, validate_email
+
 from src.config import OPERACION_PUBLICA, REENVIO_MINUTOS
 from src.url_publica import url_base
 from src.correo import debe_enviar_smtp, enviar as enviar_smtp, modo_canal
@@ -69,8 +71,10 @@ def registrar_publico(
     if not consentimiento:
         raise ValueError("Debes aceptar el aviso de privacidad y el envío de avisos.")
     correo = (correo or "").strip().lower()
-    if "@" not in correo or "." not in correo.split("@")[-1]:
-        raise ValueError("Correo electrónico no válido.")
+    try:
+        correo = validate_email(correo, check_deliverability=False).normalized
+    except EmailNotValidError as error:
+        raise ValueError("Correo electrónico no válido.") from error
     if not zonas:
         raise ValueError("Selecciona al menos un distrito de Lima Metropolitana.")
 
@@ -155,21 +159,21 @@ def registrar_publico(
         )
         confirmado = cursor.fetchone()["correo_confirmado"]
 
+    tipo_correo = None
     if confirmado:
-        asunto, texto, html = gestion_acceso(enlace_gestion(url_base(), usuario_id))
-        try:
-            _enviar_transaccional(correo, asunto, texto, html)
-        except RuntimeError:
-            return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": None, "smtp": False}
-        return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": None}
-
-    if token_plain:
-        asunto, texto, html = confirmacion(enlace_confirmacion(url_base(), token_plain))
-        try:
-            _enviar_transaccional(correo, asunto, texto, html)
-        except RuntimeError:
-            return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": token_plain, "smtp": False}
-    return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": token_plain}
+        tipo_correo = "gestion"
+    elif token_plain:
+        tipo_correo = "confirmacion"
+    return {
+        "ok": True,
+        "mensaje": MENSAJE_GENERICO,
+        "token": token_plain,
+        "usuario_id": usuario_id,
+        "correo": correo,
+        "confirmado": bool(confirmado),
+        "tipo_correo": tipo_correo,
+        "ids_suscripcion": creadas,
+    }
 
 
 def reenviar_confirmacion(correo: str, conexion) -> dict:
@@ -202,12 +206,13 @@ def reenviar_confirmacion(correo: str, conexion) -> dict:
             """,
             (hashear(token_plain), expira, fila["id"]),
         )
-    asunto, texto, html = confirmacion(enlace_confirmacion(url_base(), token_plain))
-    try:
-        _enviar_transaccional(correo, asunto, texto, html)
-    except RuntimeError:
-        return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": token_plain, "smtp": False}
-    return {"ok": True, "mensaje": MENSAJE_GENERICO, "token": token_plain}
+    return {
+        "ok": True,
+        "mensaje": MENSAJE_GENERICO,
+        "token": token_plain,
+        "correo": correo,
+        "tipo_correo": "confirmacion",
+    }
 
 
 def confirmar_publico(token: str, conexion) -> dict | None:
@@ -340,3 +345,29 @@ def avisar_baja(correo: str) -> None:
 
 def modo_correo() -> str:
     return modo_canal()
+
+
+def enviar_correo_alta(resultado: dict) -> dict:
+    """Envía confirmación o enlace de gestión. No debe llamarse dentro de una transacción abierta que se pueda revertir."""
+    tipo = resultado.get("tipo_correo")
+    correo = resultado.get("correo")
+    if not tipo or not correo:
+        return {**resultado, "correo_enviado": False}
+    try:
+        if tipo == "gestion":
+            asunto, texto, html = gestion_acceso(
+                enlace_gestion(url_base(), int(resultado["usuario_id"]))
+            )
+        else:
+            token = resultado.get("token")
+            if not token:
+                return {**resultado, "correo_enviado": False}
+            asunto, texto, html = confirmacion(enlace_confirmacion(url_base(), token))
+        _enviar_transaccional(correo, asunto, texto, html)
+        return {**resultado, "correo_enviado": True, "smtp": True}
+    except Exception:
+        logger.exception(
+            "Fallo al enviar correo transaccional; la suscripción ya está persistida",
+            extra={"evento": "correo_transaccional_fallo"},
+        )
+        return {**resultado, "correo_enviado": False, "smtp": False}

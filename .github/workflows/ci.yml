@@ -46,8 +46,11 @@ jobs:
       - name: Compose config
         run: |
           docker compose -f compose.yaml config --quiet
+          docker compose -f compose.yaml --profile publico config --quiet
           cp .env.production.example .env.production
           docker compose --env-file .env.production -f compose.prod.yaml config --quiet
+          test -f scripts/start-web.sh
+          test -f src/ciclo_produccion.py
       - name: Prometheus YAML
         run: |
           python -c "from pathlib import Path; t=Path('observability/prometheus/prometheus.yml').read_text(encoding='utf-8'); assert 'web:8000' in t"

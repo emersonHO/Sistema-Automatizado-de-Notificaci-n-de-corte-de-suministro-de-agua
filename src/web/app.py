@@ -12,7 +12,13 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from src.config import SESSION_HTTPS, SESSION_SECRET
+from src.config import (
+    EN_RENDER,
+    PROTEGER_METRICS,
+    SESSION_HTTPS,
+    SESSION_SECRET,
+    TRUST_PROXY,
+)
 from src.db import aplicar_esquema, conectar
 from src.logging_config import configurar_logging
 from src.privacidad import enmascarar_correo
@@ -78,6 +84,10 @@ app.add_middleware(
     same_site="lax",
     https_only=SESSION_HTTPS,
 )
+if TRUST_PROXY:
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.include_router(router_publico)
 app.include_router(router_interno)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -137,7 +147,11 @@ def salud():
 
 
 @app.get("/metrics")
-def metrics():
+def metrics(request: Request):
+    if PROTEGER_METRICS:
+        from src.web.interno import exigir_token
+
+        exigir_token(request.headers.get("authorization"))
     cuerpo, tipo = exposicion()
     return Response(content=cuerpo, media_type=tipo)
 
@@ -228,12 +242,36 @@ def interrupciones(
     request: Request,
     distrito: str | None = None,
     tipo: str | None = None,
+    q: str | None = None,
+    sector: str | None = None,
+    vigencia: str | None = None,
+    pagina: int = 1,
 ):
     with conectar() as conexion:
-        filas = listar_interrupciones(conexion, distrito=distrito, tipo=tipo)
+        listado = listar_interrupciones(
+            conexion,
+            distrito=distrito,
+            tipo=tipo,
+            q=q,
+            sector=sector,
+            vigencia=vigencia,
+            pagina=pagina,
+        )
     return templates.TemplateResponse(
         "interrupciones.html",
-        _ctx(request, filas=filas, distrito=distrito or "", tipo=tipo or "", distritos=DISTRITOS_LIMA),
+        _ctx(
+            request,
+            filas=listado["filas"],
+            total=listado["total"],
+            pagina=listado["pagina"],
+            paginas=listado["paginas"],
+            distrito=distrito or "",
+            tipo=tipo or "",
+            q=q or "",
+            sector=sector or "",
+            vigencia=vigencia or "",
+            distritos=DISTRITOS_LIMA,
+        ),
     )
 
 
@@ -412,16 +450,28 @@ def estado_servicios(request: Request):
     bloqueo = _exige_admin(request)
     if bloqueo:
         return bloqueo
+    from src.observabilidad import postgres_ok
     from src.web.consultas import sondear_url
 
     servicios = {
         "web_liveness": sondear_url("http://127.0.0.1:8000/salud"),
         "web_readiness": sondear_url("http://127.0.0.1:8000/salud/listo"),
-        "n8n": sondear_url("http://n8n:5678/healthz"),
-        "prometheus": sondear_url("http://prometheus:9090/-/healthy"),
-        "grafana": sondear_url("http://grafana:3000/api/health"),
-        "mailpit": sondear_url("http://mailpit:8025/api/v1/info"),
+        "postgres": {"ok": postgres_ok(), "detalle": "consulta SELECT 1"},
     }
+    if EN_RENDER:
+        servicios["n8n"] = {"ok": None, "detalle": "No forma parte del Web Service de Render; se conserva para laboratorio local."}
+        servicios["prometheus"] = {"ok": None, "detalle": "Solo Compose local."}
+        servicios["grafana"] = {"ok": None, "detalle": "Solo Compose local."}
+        servicios["mailpit"] = {"ok": None, "detalle": "Solo laboratorio local."}
+    else:
+        servicios.update(
+            {
+                "n8n": sondear_url("http://n8n:5678/healthz"),
+                "prometheus": sondear_url("http://prometheus:9090/-/healthy"),
+                "grafana": sondear_url("http://grafana:3000/api/health"),
+                "mailpit": sondear_url("http://mailpit:8025/api/v1/info"),
+            }
+        )
     return templates.TemplateResponse("estado.html", _ctx(request, servicios=servicios))
 
 

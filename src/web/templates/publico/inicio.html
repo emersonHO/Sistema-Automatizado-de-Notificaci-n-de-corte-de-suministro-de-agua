@@ -1,8 +1,9 @@
 {% extends "publico/base_publico.html" %}
 {% block contenido %}
 <section class="pub-hero">
+  <p class="pub-kicker">Servicio informativo independiente</p>
   <h1>Avisos de interrupciones de agua en Lima Metropolitana</h1>
-  <p>Registra tu correo y tu distrito. Te avisamos cuando una fuente pública reporte una interrupción que <strong>podría</strong> relacionarse con esa zona. No confirmamos predios ni reemplazamos los canales oficiales.</p>
+  <p>Registra tu correo y tu distrito. Te avisamos cuando una fuente pública de un tercero reporte una interrupción que <strong>podría</strong> relacionarse con esa zona. No confirmamos predios ni reemplazamos los canales oficiales de SEDAPAL u otras empresas prestadoras.</p>
 </section>
 
 <section class="pub-grid" id="como">
@@ -13,11 +14,12 @@
 
 <section class="pub-form" id="suscribir">
   <h2>Suscribirse</h2>
-  <form method="post" action="/suscribir">
+  <p class="pub-hint">Te enviaremos un correo para confirmar. Hasta entonces no activamos avisos. Una coincidencia de distrito indica <strong>posible</strong> afectación, no un corte en tu domicilio.</p>
+  <form method="post" action="/suscribir" id="form-suscribir">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <p class="pub-hp" aria-hidden="true"><label>Sitio web<input name="website" tabindex="-1" autocomplete="off"></label></p>
     <label for="correo">Correo electrónico</label>
-    <input id="correo" name="correo" type="email" required autocomplete="email">
+    <input id="correo" name="correo" type="email" required autocomplete="email" inputmode="email" maxlength="254">
     <label for="distrito">Distrito de Lima Metropolitana</label>
     <select id="distrito" name="distrito" required>
       <option value="">Selecciona…</option>
@@ -25,16 +27,18 @@
       <option value="{{ z.id }}">{{ z.nombre }}</option>
       {% endfor %}
     </select>
-    <p>Tipos de aviso</p>
-    <label class="pub-check"><input type="checkbox" name="alerta_nueva" checked> Interrupción nueva</label>
-    <label class="pub-check"><input type="checkbox" name="alerta_modificada" checked> Actualización relevante</label>
-    <label class="pub-check"><input type="checkbox" name="alerta_cancelacion"> Cancelación o cierre informado por la fuente</label>
-    <label class="pub-check"><input type="checkbox" name="resumen_diario"> Resumen diario opcional</label>
+    <fieldset class="pub-fieldset">
+      <legend>Tipos de aviso</legend>
+      <label class="pub-check"><input type="checkbox" name="alerta_nueva" checked> Interrupción nueva</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_modificada" checked> Actualización relevante</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_cancelacion"> Cancelación o cierre informado por la fuente</label>
+      <label class="pub-check"><input type="checkbox" name="resumen_diario"> Resumen diario opcional</label>
+    </fieldset>
     <label class="pub-check">
       <input type="checkbox" name="consentimiento" required>
       Acepto el <a href="/privacidad">aviso de privacidad</a> y recibir avisos informativos en este correo.
     </label>
-    <button class="pub-btn" type="submit">Registrarme</button>
+    <button class="pub-btn" type="submit" id="btn-suscribir">Registrarme</button>
   </form>
   <h3>¿No llegó el correo?</h3>
   <form method="post" action="/reenviar">
