@@ -1,0 +1,23 @@
+# Solo rutas ciudadanas. El túnel apunta aquí, no a :8000.
+:80 {
+	@publico {
+		path /
+		path /suscribir
+		path /reenviar
+		path /confirmar
+		path /confirmar/*
+		path /cuenta
+		path /cuenta/*
+		path /baja
+		path /baja/*
+		path /privacidad
+		path /interrupciones
+		path /interrupciones/*
+		path /static
+		path /static/*
+	}
+	handle @publico {
+		reverse_proxy web:8000
+	}
+	respond 404
+}

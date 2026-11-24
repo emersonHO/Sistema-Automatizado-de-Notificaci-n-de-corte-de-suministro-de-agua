@@ -92,6 +92,58 @@ ALTER TABLE ejecuciones_proceso ADD COLUMN IF NOT EXISTS tiempo_notificaciones_m
 ALTER TABLE ejecuciones_proceso ADD COLUMN IF NOT EXISTS ruta_captura TEXT;
 ALTER TABLE ejecuciones_proceso ADD COLUMN IF NOT EXISTS detalle JSONB;
 
+-- Fase 2: cola de solicitudes (n8n). Aditivo; no elimina datos.
+CREATE TABLE IF NOT EXISTS solicitudes_ejecucion (
+    id BIGSERIAL PRIMARY KEY,
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE'
+        CHECK (estado IN (
+            'PENDIENTE',
+            'EN_PROCESO',
+            'COMPLETADO',
+            'COMPLETADO_INCOMPLETO',
+            'ERROR',
+            'ERROR_RECUPERACION',
+            'CANCELADA'
+        )),
+    origen TEXT NOT NULL
+        CHECK (origen IN ('MANUAL', 'PROGRAMADA')),
+    modo TEXT NOT NULL DEFAULT 'api'
+        CHECK (modo IN ('api', 'fixture')),
+    ruta_fixture TEXT,
+    idempotency_key TEXT UNIQUE,
+    ejecucion_id BIGINT REFERENCES ejecuciones_proceso (id),
+    creada_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reclamada_en TIMESTAMPTZ,
+    heartbeat_en TIMESTAMPTZ,
+    lease_hasta TIMESTAMPTZ,
+    finalizada_en TIMESTAMPTZ,
+    worker_id TEXT,
+    backend_pid INTEGER,
+    intentos_worker INTEGER NOT NULL DEFAULT 0,
+    max_intentos INTEGER NOT NULL DEFAULT 3,
+    mensaje_error TEXT,
+    detalle JSONB,
+    cuerpo_origen TEXT NOT NULL,
+    cuerpo_solo_si_libre BOOLEAN NOT NULL DEFAULT FALSE,
+    cuerpo_modo TEXT NOT NULL DEFAULT 'api',
+    cuerpo_ruta_fixture TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_solicitudes_pendientes
+    ON solicitudes_ejecucion (id)
+    WHERE estado = 'PENDIENTE';
+
+CREATE INDEX IF NOT EXISTS idx_solicitudes_en_proceso
+    ON solicitudes_ejecucion (lease_hasta)
+    WHERE estado = 'EN_PROCESO';
+
+ALTER TABLE ejecuciones_proceso
+    ADD COLUMN IF NOT EXISTS solicitud_id BIGINT REFERENCES solicitudes_ejecucion (id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ejecuciones_solicitud
+    ON ejecuciones_proceso (solicitud_id)
+    WHERE solicitud_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS capturas (
     id BIGSERIAL PRIMARY KEY,
     ejecucion_id BIGINT REFERENCES ejecuciones_proceso (id),
@@ -212,5 +264,89 @@ CREATE TABLE IF NOT EXISTS intentos_notificacion (
     resultado TEXT NOT NULL,
     codigo_smtp TEXT,
     mensaje TEXT,
-    modo TEXT NOT NULL DEFAULT 'simulacion'
+    modo TEXT NOT NULL DEFAULT 'simulacion',
+    worker_id TEXT
+);
+
+ALTER TABLE intentos_notificacion ADD COLUMN IF NOT EXISTS worker_id TEXT;
+
+-- Fase 3: columnas de reclamo, reintento y trazabilidad (aditivo, no destructivo).
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS canal TEXT NOT NULL DEFAULT 'simulacion';
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS motivo TEXT;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS proximo_intento TIMESTAMPTZ;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS max_intentos INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS worker_id TEXT;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS heartbeat_en TIMESTAMPTZ;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS backend_pid INTEGER;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS procesada_en TIMESTAMPTZ;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS finalizada_en TIMESTAMPTZ;
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS recuperaciones INTEGER NOT NULL DEFAULT 0;
+
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT c.conname
+        FROM pg_constraint c
+        WHERE c.conrelid = 'notificaciones'::regclass
+          AND c.contype = 'c'
+          AND pg_get_constraintdef(c.oid) LIKE '%PENDIENTE%'
+          AND pg_get_constraintdef(c.oid) LIKE '%estado%'
+    LOOP
+        EXECUTE format('ALTER TABLE notificaciones DROP CONSTRAINT %I', r.conname);
+    END LOOP;
+    ALTER TABLE notificaciones ADD CONSTRAINT notificaciones_estado_check
+        CHECK (estado IN (
+            'PENDIENTE',
+            'EN_PROCESO',
+            'REINTENTANDO',
+            'SIMULADA',
+            'ACEPTADA_SMTP',
+            'FALLIDA',
+            'ERROR',
+            'DESCARTADA',
+            'CANCELADA'
+        ));
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_notificaciones_outbox
+ON notificaciones (creada_en)
+WHERE estado IN ('PENDIENTE', 'REINTENTANDO', 'FALLIDA', 'EN_PROCESO');
+
+CREATE INDEX IF NOT EXISTS idx_intentos_notificacion
+ON intentos_notificacion (notificacion_id, fecha_intento);
+
+-- Operación pública: preferencias, consentimiento, tokens hasheados, rate limit.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS pausado BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS consentimiento_en TIMESTAMPTZ;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_reenvio_en TIMESTAMPTZ;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_confirmacion_expira TIMESTAMPTZ;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS correo_pendiente TEXT;
+
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS alerta_nueva BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS alerta_modificada BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS alerta_cancelacion BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS resumen_diario BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS pausada BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS limitacion_solicitudes (
+    id BIGSERIAL PRIMARY KEY,
+    clave TEXT NOT NULL,
+    ocurrida_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_limitacion_clave_tiempo
+    ON limitacion_solicitudes (clave, ocurrida_en DESC);
+
+CREATE TABLE IF NOT EXISTS resumenes_enviados (
+    id BIGSERIAL PRIMARY KEY,
+    usuario_id BIGINT NOT NULL REFERENCES usuarios (id),
+    fecha_local DATE NOT NULL,
+    estado TEXT NOT NULL,
+    detalle TEXT,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (usuario_id, fecha_local)
 );

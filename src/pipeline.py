@@ -19,6 +19,7 @@ from pathlib import Path
 from psycopg.types.json import Jsonb
 
 from src.config import API_DIAS, CARPETA_RAW, LOCK_KEY
+from src.logging_config import extra_traza
 from src.db import aplicar_esquema, conectar
 from src.normalizador import dataframe_a_registros, normalizar_captura
 from src.notificaciones import (
@@ -42,11 +43,17 @@ def ejecutar_pipeline(
     desde_archivo: Path | None = None,
     procesar_envios: bool = True,
     forzar_simulacion: bool = True,
+    solicitud_id: int | None = None,
 ) -> dict:
     aplicar_esquema()
     conexion = conectar()
     sembrar_zonas(conexion)
     conexion.commit()
+
+    if solicitud_id is not None:
+        from src.solicitudes import registrar_backend_pid
+
+        registrar_backend_pid(solicitud_id, conexion)
 
     with conexion.cursor() as cursor:
         cursor.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,))
@@ -58,13 +65,22 @@ def ejecutar_pipeline(
     with conexion.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO ejecuciones_proceso (estado)
-            VALUES ('EN_PROCESO')
+            INSERT INTO ejecuciones_proceso (estado, solicitud_id)
+            VALUES ('EN_PROCESO', %s)
             RETURNING id
-            """
+            """,
+            (solicitud_id,),
         )
         ejecucion_id = cursor.fetchone()[0]
     conexion.commit()
+    logger.info(
+        "Inicio de ejecución del pipeline",
+        extra=extra_traza(
+            evento="pipeline_inicio",
+            ejecucion_id=ejecucion_id,
+            solicitud_id=solicitud_id,
+        ),
+    )
 
     tiempos: dict[str, int | None] = {
         "tiempo_descarga_ms": None,
@@ -208,9 +224,19 @@ def ejecutar_pipeline(
                 ),
             )
         conexion.commit()
+        estado_final = "COMPLETADO" if captura_completa else "COMPLETADO_INCOMPLETO"
+        logger.info(
+            "Fin de ejecución del pipeline",
+            extra=extra_traza(
+                evento="pipeline_fin",
+                ejecucion_id=ejecucion_id,
+                solicitud_id=solicitud_id,
+                estado=estado_final,
+            ),
+        )
         resultado.update(
             {
-                "estado": "COMPLETADO" if captura_completa else "COMPLETADO_INCOMPLETO",
+                "estado": estado_final,
                 "contadores": c,
                 "coincidencias": notif,
                 "envio": envio,
@@ -223,7 +249,15 @@ def ejecutar_pipeline(
         )
         return resultado
     except Exception as error:
-        logger.exception("Fallo del pipeline")
+        logger.exception(
+            "Fallo del pipeline",
+            extra=extra_traza(
+                evento="pipeline_error",
+                ejecucion_id=ejecucion_id,
+                solicitud_id=solicitud_id,
+                estado="ERROR",
+            ),
+        )
         conexion.rollback()
         with conexion.cursor() as cursor:
             cursor.execute(

@@ -38,6 +38,10 @@ def _constante(a: str, b: str) -> bool:
     return hmac.compare_digest(aa, bb)
 
 
+def secreto_igual(recibido: str, esperado: str) -> bool:
+    return _constante(recibido, esperado)
+
+
 def autenticar(usuario: str, password: str) -> bool:
     if not admin_requerido():
         return True

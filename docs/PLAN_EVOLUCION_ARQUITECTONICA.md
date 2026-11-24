@@ -44,34 +44,42 @@ Entregables: este archivo, `docs/ARQUITECTURA_OBJETIVO.md`, `docs/DECISIONES_ARQ
 
 **No incluye** n8n, Mailpit, Prometheus, Grafana ni Actions.
 
-## Fase 2 — n8n (no implementar ahora)
+## Fase 2 — n8n (implementada 17 nov 2026)
 
-- Servicio `n8n` + volumen; credenciales distintas; BD n8n separada si usa Postgres.
-- Tabla `solicitudes_ejecucion` y endpoints admin autenticados de disparo/consulta **sin** dejar el HTTP abierto durante la ingesta.
-- Worker que consume trabajos + advisory lock existente.
-- Workflows exportados en `n8n/workflows/`.
-- Alertas al administrador (correo Mailpit o webhook).
+- Servicio `n8n` (`n8nio/n8n:2.48.4`) + volumen `n8n_data` (SQLite; no usa el Postgres de dominio).
+- Tabla `solicitudes_ejecucion` y API Bearer `/internal/v1/pipeline/ejecuciones` (POST 202, GET estado).
+- `pipeline-worker` reclama con `SKIP LOCKED` y reutiliza `ejecutar_pipeline()` + lock `570114`.
+- Workflows en `n8n/workflows/` (manual y programado **inactivo**).
+- Alertas Mailpit: pendientes de fase 3.
 
-## Fase 3 — Worker de notificaciones
+Pendiente de operación: activar el cron solo después de validar el workflow manual en la UI de n8n (importar JSON).
 
-- Servicio `notification-worker`: bucle `procesar_outbox`.
-- Mailpit en laboratorio; SMTP real sigue opt-in.
-- Pipeline deja de ser el único consumidor del outbox.
+## Fase 3 — Worker de notificaciones (implementada 22 nov 2026)
 
-## Fase 4 — Observabilidad
+- Servicio `notification-worker` (`python -m src.worker_notificaciones`): reclamo `FOR UPDATE SKIP LOCKED`, estados `EN_PROCESO` / `REINTENTANDO` / `SIMULADA`.
+- Destinatarios de prueba = `usuarios` + `suscripciones` (correos ficticios). No se añadió Mailpit: la entrega es archivo JSON en `data/simulaciones/` y el estado terminal de éxito es `SIMULADA`, nunca `ENVIADA`.
+- `pipeline-worker` deja `procesar_envios=False`; el CLI local puede seguir consumiendo el outbox con el default del pipeline.
+- Consulta Bearer: `GET /internal/v1/notificaciones` y `GET /internal/v1/destinatarios`.
+- SMTP real sigue opt-in y **desactivado** en Compose.
 
-- Logs JSON por defecto en Compose.
-- `/metrics` Prometheus desde ejecuciones reales.
-- Grafana con dashboard de tiempos, éxitos/fallos; sin cifras inventadas.
+## Fase 4 — Observabilidad (implementada 22 nov 2026)
 
-## Fase 5 — CI y evaluación
+- Logs JSON en Compose con IDs de traza (solicitud, ejecución, notificación, worker).
+- Métricas agregadas desde PostgreSQL (`src/observabilidad.py`); panel `/metricas`; `GET /internal/v1/observabilidad`.
+- Liveness `GET /salud` y readiness `GET /salud/listo` (healthcheck Compose del `web`).
+- **Sin** Prometheus, Grafana ni exporters (ADR-011). Recursos: `scripts/diagnostico.ps1`.
 
-- GitHub Actions: pytest + `compose config` / build.
-- Experimentos de latencia controlada, idempotencia y fallos, reportados desde ejecuciones.
+## Fase 5 — Integración, CI y pila de referencia (implementada 22 nov 2026)
+
+- GitHub Actions: pytest con PostgreSQL de servicio, `compose config`, JSON de Grafana, Prometheus YAML, sin `.env` versionado.
+- Prometheus `prom/prometheus:v2.54.1` + Grafana `11.3.1` (aprovisionados).
+- Mailpit `axllent/mailpit:v1.21.8` (SMTP de laboratorio).
+- Adaptador `src/correo.py`; worker respeta `SMTP_ENABLED`.
+- Workflow n8n de seguimiento. Panel ampliado (solicitudes, destinatarios, auditoría, servicios).
 
 ## Orden y dependencias
 
-Fase 1 no depende de n8n. Fase 2 depende de un endpoint de jobs (aún no existe). Fase 3 puede adelantarse si se prioriza el desacople del correo; el plan oficial la deja después de n8n. Fase 4 necesita procesos estables. Fase 5 necesita imagen y tests verdes.
+Fase 1 no depende de n8n. Fase 2 (jobs HTTP + worker) está implementada. Fase 3 puede adelantarse si se prioriza el desacople del correo; el plan oficial la deja después de n8n. Fase 4 necesita procesos estables. Fase 5 necesita imagen y tests verdes.
 
 ## Criterio para no declarar una fase cerrada
 

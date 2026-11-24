@@ -4,7 +4,7 @@ La evolución contenerizada y el diagrama objetivo están en `docs/ARQUITECTURA_
 
 ## Estilo
 
-Proceso único en Python, PostgreSQL como almacén y cola transaccional (outbox), interfaz FastAPI + Jinja2 + Bootstrap 5. Sin microservicios, sin React y sin infraestructura de pago.
+Paquete Python único. En Docker hay procesos separados (`web`, `pipeline-worker`, `notification-worker`) sobre el mismo PostgreSQL (outbox transaccional). Interfaz FastAPI + Jinja2 + Bootstrap 5. Sin microservicios de repositorio, sin React y sin infraestructura de pago.
 
 ## Flujo
 
@@ -16,9 +16,9 @@ Fuente pública externa (tercero)
         → PostgreSQL (interrupciones)
         → Historial versionado (hash de origen vs hash relevante)
         → Correspondencia territorial determinista (Lima Metropolitana)
-        → Outbox de notificaciones
-        → Simulación SMTP o envío real (opt-in)
-        → Panel y métricas
+        → Outbox de notificaciones (PENDIENTE)
+        → notification-worker (SIMULADA; SMTP real opt-in, desactivado en Compose)
+        → Panel, API interna y métricas
 ```
 
 ## Módulos
@@ -33,10 +33,13 @@ Fuente pública externa (tercero)
 | `src/hashes.py` | Hash de origen, relevante y técnico |
 | `src/correspondencia.py` | Distrito / sector / área |
 | `src/suscripciones.py` | Usuarios, zonas, confirmación, baja |
-| `src/notificaciones.py` | Outbox, plantillas, simulación SMTP |
+| `src/notificaciones.py` | Outbox, plantillas, reclamo, simulación |
+| `src/worker_notificaciones.py` | Bucle del consumidor del outbox |
+| `src/worker_pipeline.py` | Bucle de solicitudes de ingesta (no envía avisos) |
 | `src/pipeline.py` | Orquestación y candado `pg_try_advisory_lock` |
 | `src/web/app.py` | Panel académico |
 | `src/evaluacion.py` | Indicadores reproducibles |
+| `src/observabilidad.py` | Snapshot SQL de pipeline, cola y outbox |
 
 ## Hashes
 
@@ -56,11 +59,11 @@ Una incidencia puede volver a un estado anterior: se inserta una nueva fila de h
 
 ## Notificaciones
 
-Unicidad: `(suscripcion_id, interrupcion_id, version_relevante, tipo_evento)`.
+Unicidad persistida: `(suscripcion_id, interrupcion_id, version_relevante, tipo_evento)`.
 
-No se usa `(interrupcion_id, usuario_id, tipo_evento)` como única clave, para permitir varias modificaciones legítimas.
+Además, la generación omite un segundo aviso al mismo `usuario_id` para la misma interrupción, versión relevante y tipo de evento (varias suscripciones del mismo destinatario de prueba no duplican el outbox). Las modificaciones posteriores siguen creando `MODIFICADA` cuando cambia el hash relevante.
 
-Estados: `PENDIENTE`, `SIMULADA`, `ACEPTADA_SMTP`, `FALLIDA`, `DESCARTADA`.
+Estados: `PENDIENTE` → `EN_PROCESO` → `SIMULADA` (éxito simulado). Reintento: `REINTENTANDO` o `FALLIDA`. También existen `ACEPTADA_SMTP` (opt-in, no usado en Compose), `DESCARTADA`, `CANCELADA` y `ERROR` (reserva). Una simulación exitosa **no** se marca `ENVIADA`.
 
 ## Tiempos
 

@@ -8,13 +8,17 @@ def test_salud():
     resp = cliente.get("/salud")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
+    assert resp.json()["vivo"] is True
 
 
 def test_panel_y_suscripcion(conexion):
     cliente = TestClient(app)
     r = cliente.get("/")
     assert r.status_code == 200
-    assert "Panel principal" in r.text
+    assert "Suscribirse" in r.text
+    r = cliente.get("/admin")
+    assert r.status_code == 200
+    assert "Resumen operativo" in r.text
     r = cliente.get("/interrupciones")
     assert r.status_code == 200
     r = cliente.get("/suscripciones")
@@ -26,6 +30,16 @@ def test_panel_y_suscripcion(conexion):
     r = cliente.get("/metricas")
     assert r.status_code == 200
     assert "Precisión" in r.text
+    r = cliente.get("/solicitudes")
+    assert r.status_code == 200
+    r = cliente.get("/destinatarios")
+    assert r.status_code == 200
+    r = cliente.get("/auditoria")
+    assert r.status_code == 200
+    r = cliente.get("/estado")
+    assert r.status_code == 200
+    r = cliente.get("/metrics")
+    assert r.status_code == 200
 
 
 def test_admin_exige_login_cuando_hay_password(conexion, monkeypatch):

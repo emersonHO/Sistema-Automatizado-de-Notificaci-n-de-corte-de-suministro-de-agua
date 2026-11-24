@@ -104,54 +104,41 @@ def evaluar_deteccion_cambios(casos: list[dict]) -> dict:
 
 
 def metricas_ejecuciones(conexion=None) -> dict:
-    propia = conexion is None
-    if propia:
-        conexion = conectar()
-    try:
-        with conexion.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COUNT(*) ,
-                       COUNT(*) FILTER (WHERE estado LIKE 'COMPLETADO%'),
-                       COUNT(*) FILTER (WHERE estado = 'ERROR'),
-                       AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio)))
-                           FILTER (WHERE fecha_fin IS NOT NULL),
-                       AVG(tiempo_descarga_ms),
-                       AVG(tiempo_normalizacion_ms),
-                       AVG(tiempo_persistencia_ms),
-                       AVG(tiempo_correspondencia_ms),
-                       AVG(tiempo_notificaciones_ms)
-                FROM ejecuciones_proceso
-                """
-            )
-            fila = cursor.fetchone()
-            cursor.execute("SELECT COUNT(*) FROM interrupciones")
-            total_inc = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM notificaciones")
-            total_n = cursor.fetchone()[0]
-            cursor.execute(
-                """
-                SELECT estado, COUNT(*) FROM notificaciones GROUP BY estado
-                """
-            )
-            estados = {row[0]: row[1] for row in cursor.fetchall()}
-        return {
-            "ejecuciones": fila[0],
-            "ejecuciones_ok": fila[1],
-            "ejecuciones_error": fila[2],
-            "duracion_promedio_s": float(fila[3]) if fila[3] is not None else None,
-            "promedio_descarga_ms": float(fila[4]) if fila[4] is not None else None,
-            "promedio_normalizacion_ms": float(fila[5]) if fila[5] is not None else None,
-            "promedio_persistencia_ms": float(fila[6]) if fila[6] is not None else None,
-            "promedio_correspondencia_ms": float(fila[7]) if fila[7] is not None else None,
-            "promedio_notificaciones_ms": float(fila[8]) if fila[8] is not None else None,
-            "interrupciones": total_inc,
-            "notificaciones": total_n,
-            "notificaciones_por_estado": estados,
-        }
-    finally:
-        if propia:
-            conexion.close()
+    """Compatibilidad: resumen plano. El detalle está en src.observabilidad.snapshot."""
+    from src.observabilidad import snapshot
+
+    data = snapshot(conexion)
+    pipe = data["pipeline"]
+    notif = data["notificaciones"]
+    estados = {
+        "PENDIENTE": notif["pendientes"],
+        "EN_PROCESO": notif["en_proceso"],
+        "SIMULADA": notif["simuladas"],
+        "REINTENTANDO": notif["reintentando"],
+        "FALLIDA": notif["fallidas"],
+        "CANCELADA": notif["canceladas"],
+        "DESCARTADA": notif["descartadas"],
+        "ACEPTADA_SMTP": notif["aceptadas_smtp"],
+    }
+    return {
+        "ejecuciones": pipe["total"],
+        "ejecuciones_ok": pipe["completadas"] + pipe["incompletas"],
+        "ejecuciones_completadas": pipe["completadas"],
+        "ejecuciones_incompletas": pipe["incompletas"],
+        "ejecuciones_error": pipe["fallidas"],
+        "duracion_promedio_s": pipe["duracion_promedio_s"],
+        "duracion_mediana_s": pipe["duracion_mediana_s"],
+        "duracion_p95_s": pipe["duracion_p95_s"],
+        "promedio_descarga_ms": pipe["promedio_descarga_ms"],
+        "promedio_normalizacion_ms": pipe["promedio_normalizacion_ms"],
+        "promedio_persistencia_ms": pipe["promedio_persistencia_ms"],
+        "promedio_correspondencia_ms": pipe["promedio_correspondencia_ms"],
+        "promedio_notificaciones_ms": pipe["promedio_notificaciones_ms"],
+        "interrupciones": data["capacidad"]["interrupciones_persistidas"],
+        "notificaciones": notif["total"],
+        "notificaciones_por_estado": {k: v for k, v in estados.items() if v},
+        "observabilidad": data,
+    }
 
 
 def escribir_reporte(nombre: str, payload: dict) -> Path:

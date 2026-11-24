@@ -8,7 +8,7 @@
     <tr>
       <th>Id</th><th>Estado</th><th>Inicio</th><th>Fin</th>
       <th>Leídos</th><th>Nuevos</th><th>Modificados</th><th>Sin cambios</th>
-      <th>Errores</th><th>Tiempos (ms)</th>
+      <th>Calidad</th><th>Errores</th><th>Tiempos (ms)</th>
     </tr>
   </thead>
   <tbody>
@@ -22,6 +22,14 @@
       <td>{{ fila.registros_nuevos }}</td>
       <td>{{ fila.registros_actualizados }}</td>
       <td>{{ fila.registros_sin_cambios }}</td>
+      <td>
+        {% set det = fila.detalle if fila.detalle is mapping else {} %}
+        {% set cal = det.get('calidad') if det else None %}
+        {% if cal %}
+          {% if cal.valido %}<span class="estado-ok">válido</span>{% else %}<span class="estado-bad">errores</span>{% endif %}
+          · {{ (cal.errores or [])|length }} err / {{ (cal.advertencias or [])|length }} adv
+        {% else %}—{% endif %}
+      </td>
       <td>{{ fila.mensaje_error or '—' }}</td>
       <td>
         desc {{ fila.tiempo_descarga_ms }} /
@@ -32,7 +40,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="10">Sin ejecuciones.</td></tr>
+    <tr><td colspan="11">Sin ejecuciones.</td></tr>
   {% endfor %}
   </tbody>
 </table>

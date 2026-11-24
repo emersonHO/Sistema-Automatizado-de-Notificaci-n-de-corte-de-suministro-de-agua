@@ -8,23 +8,28 @@
   <link href="/static/estilos.css" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+<nav class="navbar navbar-expand-lg navbar-dark">
   <div class="container">
-    <a class="navbar-brand" href="/">Interrupciones de agua — Lima Metropolitana</a>
+    <a class="navbar-brand" href="{% if es_admin %}/admin{% else %}/{% endif %}">Avisos de agua · Lima Metropolitana</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="menu">
       <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="/">Inicio</a></li>
         {% if es_admin %}
-        <li class="nav-item"><a class="nav-link" href="/">Panel</a></li>
+        <li class="nav-item"><a class="nav-link" href="/admin">Resumen</a></li>
         {% endif %}
         <li class="nav-item"><a class="nav-link" href="/interrupciones">Interrupciones</a></li>
-        <li class="nav-item"><a class="nav-link" href="/suscripciones">Suscripciones</a></li>
+        <li class="nav-item"><a class="nav-link" href="/#suscribir">Suscribirse</a></li>
         {% if es_admin %}
-        <li class="nav-item"><a class="nav-link" href="/notificaciones">Notificaciones</a></li>
         <li class="nav-item"><a class="nav-link" href="/ejecuciones">Ejecuciones</a></li>
+        <li class="nav-item"><a class="nav-link" href="/solicitudes">Solicitudes</a></li>
+        <li class="nav-item"><a class="nav-link" href="/notificaciones">Notificaciones</a></li>
+        <li class="nav-item"><a class="nav-link" href="/destinatarios">Destinatarios</a></li>
+        <li class="nav-item"><a class="nav-link" href="/auditoria">Auditoría</a></li>
         <li class="nav-item"><a class="nav-link" href="/metricas">Métricas</a></li>
+        <li class="nav-item"><a class="nav-link" href="/estado">Servicios</a></li>
         {% endif %}
         {% if auth_activa and es_admin %}
         <li class="nav-item">
@@ -33,20 +38,18 @@
             <button class="btn btn-link nav-link" type="submit">Salir</button>
           </form>
         </li>
-        {% elif auth_activa %}
-        <li class="nav-item"><a class="nav-link" href="/admin/login">Administración</a></li>
         {% endif %}
       </ul>
     </div>
   </div>
 </nav>
-<main class="container pb-5">
+<main class="container py-4">
   <p class="aviso mb-4">{{ aviso_fuente }}</p>
   {% if flash %}<div class="alert alert-info">{{ flash }}</div>{% endif %}
   {% block contenido %}{% endblock %}
 </main>
 <footer class="container pb-4">
-  Proyecto de tesis. El sistema no confirma cortes por vivienda ni sustituye los canales oficiales.
+  Proyecto de tesis. Fuente pública de un tercero (no es API oficial de SEDAPAL). Una coincidencia territorial no confirma afectación de una vivienda.
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

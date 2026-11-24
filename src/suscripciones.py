@@ -158,6 +158,8 @@ def registrar_usuario(correo: str, conexion=None) -> dict:
 
 
 def confirmar_correo(token: str, conexion=None) -> dict | None:
+    from src.tokens import hashear
+
     propia = conexion is None
     if propia:
         conexion = conectar()
@@ -168,11 +170,13 @@ def confirmar_correo(token: str, conexion=None) -> dict | None:
                 UPDATE usuarios
                 SET correo_confirmado = TRUE,
                     confirmado_en = NOW(),
-                    token_confirmacion = NULL
-                WHERE token_confirmacion = %s
+                    token_confirmacion = NULL,
+                    token_confirmacion_expira = NULL
+                WHERE token_confirmacion IN (%s, %s)
+                  AND (token_confirmacion_expira IS NULL OR token_confirmacion_expira > NOW())
                 RETURNING id, correo, correo_confirmado
                 """,
-                (token,),
+                (token, hashear(token)),
             )
             usuario = cursor.fetchone()
             if usuario:
@@ -287,12 +291,20 @@ def suscripciones_activas(conexion) -> list[dict]:
             """
             SELECT s.id AS suscripcion_id, s.usuario_id, s.zona_id,
                    z.tipo, z.nombre, z.nombre_normalizado, z.distrito_padre, z.ambito_lima,
-                   u.correo, u.correo_confirmado, u.activo
+                   u.correo, u.correo_confirmado, u.activo,
+                   COALESCE(s.alerta_nueva, TRUE) AS alerta_nueva,
+                   COALESCE(s.alerta_modificada, TRUE) AS alerta_modificada,
+                   COALESCE(s.alerta_cancelacion, TRUE) AS alerta_cancelacion,
+                   COALESCE(s.resumen_diario, FALSE) AS resumen_diario,
+                   COALESCE(s.pausada, FALSE) AS pausada,
+                   COALESCE(u.pausado, FALSE) AS usuario_pausado
             FROM suscripciones s
             JOIN zonas z ON z.id = s.zona_id
             JOIN usuarios u ON u.id = s.usuario_id
             WHERE s.activa AND s.confirmada AND u.activo AND u.correo_confirmado
               AND z.activa AND z.ambito_lima
+              AND COALESCE(s.pausada, FALSE) = FALSE
+              AND COALESCE(u.pausado, FALSE) = FALSE
             """
         )
         return list(cursor.fetchall())

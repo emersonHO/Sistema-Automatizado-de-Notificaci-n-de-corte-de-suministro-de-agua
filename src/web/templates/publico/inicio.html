@@ -1,0 +1,56 @@
+{% extends "publico/base_publico.html" %}
+{% block contenido %}
+<section class="pub-hero">
+  <h1>Avisos de interrupciones de agua en Lima Metropolitana</h1>
+  <p>Registra tu correo y tu distrito. Te avisamos cuando una fuente pública reporte una interrupción que <strong>podría</strong> relacionarse con esa zona. No confirmamos predios ni reemplazamos los canales oficiales.</p>
+</section>
+
+<section class="pub-grid" id="como">
+  <article class="pub-card"><h2>1. Elige tu distrito</h2><p>Solo Lima Metropolitana. Callao se conserva en los datos originales pero no entra en el matching de este servicio.</p></article>
+  <article class="pub-card"><h2>2. Confirma tu correo</h2><p>Hasta que confirmes, no activamos avisos. El enlace caduca.</p></article>
+  <article class="pub-card"><h2>3. Recibe novedades</h2><p>Avisamos interrupciones nuevas, cambios relevantes y cancelaciones si la fuente lo indica. Sin correos repetidos si no hay cambio.</p></article>
+</section>
+
+<section class="pub-form" id="suscribir">
+  <h2>Suscribirse</h2>
+  <form method="post" action="/suscribir">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="pub-hp" aria-hidden="true"><label>Sitio web<input name="website" tabindex="-1" autocomplete="off"></label></p>
+    <label for="correo">Correo electrónico</label>
+    <input id="correo" name="correo" type="email" required autocomplete="email">
+    <label for="distrito">Distrito de Lima Metropolitana</label>
+    <select id="distrito" name="distrito" required>
+      <option value="">Selecciona…</option>
+      {% for z in zonas %}
+      <option value="{{ z.id }}">{{ z.nombre }}</option>
+      {% endfor %}
+    </select>
+    <p>Tipos de aviso</p>
+    <label class="pub-check"><input type="checkbox" name="alerta_nueva" checked> Interrupción nueva</label>
+    <label class="pub-check"><input type="checkbox" name="alerta_modificada" checked> Actualización relevante</label>
+    <label class="pub-check"><input type="checkbox" name="alerta_cancelacion"> Cancelación o cierre informado por la fuente</label>
+    <label class="pub-check"><input type="checkbox" name="resumen_diario"> Resumen diario opcional</label>
+    <label class="pub-check">
+      <input type="checkbox" name="consentimiento" required>
+      Acepto el <a href="/privacidad">aviso de privacidad</a> y recibir avisos informativos en este correo.
+    </label>
+    <button class="pub-btn" type="submit">Registrarme</button>
+  </form>
+  <h3>¿No llegó el correo?</h3>
+  <form method="post" action="/reenviar">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="pub-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></p>
+    <label for="correo2">Mismo correo</label>
+    <input id="correo2" name="correo" type="email" required>
+    <button class="pub-btn" type="submit">Reenviar confirmación</button>
+  </form>
+</section>
+
+<section id="faq">
+  <h2>Preguntas frecuentes</h2>
+  <details class="pub-faq"><summary>¿Esto es SEDAPAL?</summary><p>No. Consultamos una fuente pública de un tercero. No es un canal oficial.</p></details>
+  <details class="pub-faq"><summary>¿Me garantiza que me quedaré sin agua?</summary><p>No. El matching es territorial (distrito o área si está informada). No identifica domicilios.</p></details>
+  <details class="pub-faq"><summary>¿Cómo cancelo?</summary><p>Cada aviso incluye un enlace de cancelación. No hace falta contraseña.</p></details>
+  <details class="pub-faq"><summary>¿Qué datos guardan?</summary><p>Correo, distrito o zona elegida, preferencias y el consentimiento. Detalle en el aviso de privacidad.</p></details>
+</section>
+{% endblock %}

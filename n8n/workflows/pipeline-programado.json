@@ -1,0 +1,286 @@
+{
+  "name": "Pipeline interrupciones — programado",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Lima"
+  },
+  "notes": "Producción: cada 15 min, modo=api, solo_si_libre. Desactivado hasta validar. No usa fixtures.",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "name": "Cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://web:8000/internal/v1/pipeline/ejecuciones",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "=n8n-{{$workflow.id}}-{{$execution.id}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"origen\": \"PROGRAMADA\",\n  \"solo_si_libre\": true,\n  \"modo\": \"api\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "name": "Encolar si libre",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fastapi-interno",
+          "name": "FastAPI interno"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "activa",
+              "leftValue": "={{$json.codigo}}",
+              "rightValue": "EJECUCION_ACTIVA",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "name": "¿Omitida por cola activa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m",
+              "name": "mensaje",
+              "value": "Omitido: ya hay una solicitud PENDIENTE o EN_PROCESO. No se genera un segundo POST.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000004",
+      "name": "Registrar omisión",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 160]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "inicio",
+              "name": "inicio_ms",
+              "value": "={{Date.now()}}",
+              "type": "number"
+            },
+            {
+              "id": "sid",
+              "name": "solicitud_id",
+              "value": "={{$json.solicitud_id}}",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000005",
+      "name": "Guardar solicitud",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 0]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "b1000000-0000-4000-8000-000000000006",
+      "name": "Esperar 10s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "url": "=http://web:8000/internal/v1/pipeline/ejecuciones/{{ $('Guardar solicitud').item.json.solicitud_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 15000 }
+      },
+      "id": "b1000000-0000-4000-8000-000000000007",
+      "name": "Consultar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fastapi-interno",
+          "name": "FastAPI interno"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "terminal",
+              "leftValue": "={{['COMPLETADO','COMPLETADO_INCOMPLETO','ERROR','ERROR_RECUPERACION','CANCELADA'].includes($json.estado)}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000008",
+      "name": "¿Estado terminal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "timeout",
+              "leftValue": "={{Date.now() - $('Guardar solicitud').item.json.inicio_ms}}",
+              "rightValue": 900000,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000009",
+      "name": "¿Timeout 15 min?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1320, 220]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "mensaje",
+              "value": "No se obtuvo un estado terminal en 15 minutos. La solicitud y el pipeline no se cancelan.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000010",
+      "name": "Espera agotada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1540, 320]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "value": "={{$json.estado === 'COMPLETADO' || $json.estado === 'COMPLETADO_INCOMPLETO'}}",
+              "type": "boolean"
+            },
+            {
+              "id": "estado",
+              "name": "estado",
+              "value": "={{$json.estado}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000011",
+      "name": "Resultado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1540, 0]
+    }
+  ],
+  "connections": {
+    "Cada 60 minutos": {
+      "main": [[{ "node": "Encolar si libre", "type": "main", "index": 0 }]]
+    },
+    "Encolar si libre": {
+      "main": [[{ "node": "¿Omitida por cola activa?", "type": "main", "index": 0 }]]
+    },
+    "¿Omitida por cola activa?": {
+      "main": [
+        [{ "node": "Registrar omisión", "type": "main", "index": 0 }],
+        [{ "node": "Guardar solicitud", "type": "main", "index": 0 }]
+      ]
+    },
+    "Guardar solicitud": {
+      "main": [[{ "node": "Esperar 10s", "type": "main", "index": 0 }]]
+    },
+    "Esperar 10s": {
+      "main": [[{ "node": "Consultar estado", "type": "main", "index": 0 }]]
+    },
+    "Consultar estado": {
+      "main": [[{ "node": "¿Estado terminal?", "type": "main", "index": 0 }]]
+    },
+    "¿Estado terminal?": {
+      "main": [
+        [{ "node": "Resultado", "type": "main", "index": 0 }],
+        [{ "node": "¿Timeout 15 min?", "type": "main", "index": 0 }]
+      ]
+    },
+    "¿Timeout 15 min?": {
+      "main": [
+        [{ "node": "Espera agotada", "type": "main", "index": 0 }],
+        [{ "node": "Esperar 10s", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "uid": "agua-notif",
+  "title": "Notificaciones",
+  "timezone": "utc",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "bargauge", "title": "Por estado (SIMULADA ≠ leído)",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones", "legendFormat": "{{estado}}", "refId": "A" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Reintentos / recuperaciones",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "agua_notificaciones_reintentos", "legendFormat": "reintentos", "refId": "A" },
+        { "expr": "agua_notificaciones_recuperaciones", "legendFormat": "recuperaciones", "refId": "B" }
+      ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Tiempos outbox (s)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones_tiempo_segundos", "legendFormat": "{{fase}}", "refId": "A" }]
+    }
+  ]
+}

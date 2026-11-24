@@ -2,7 +2,18 @@
 {% block titulo %}Notificaciones{% endblock %}
 {% block contenido %}
 <h1 class="mb-3">Notificaciones</h1>
-<p>Los correos se muestran enmascarados. El estado ACEPTADA_SMTP solo indica que el servidor SMTP aceptó el mensaje, no la entrega al buzón.</p>
+<p>Los correos se muestran enmascarados. <strong>SIMULADA</strong> no es un envío. <strong>ACEPTADA_SMTP</strong> solo indica que el servidor aceptó el mensaje, no la lectura del buzón.</p>
+<form class="row g-2 mb-3" method="get">
+  <div class="col-auto">
+    <select name="estado" class="form-select">
+      <option value="">Todos</option>
+      {% for e in ['PENDIENTE','EN_PROCESO','SIMULADA','ACEPTADA_SMTP','REINTENTANDO','FALLIDA'] %}
+      <option value="{{ e }}" {% if estado == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-primary" type="submit">Filtrar</button></div>
+</form>
 <div class="table-responsive">
 <table class="table table-sm table-striped">
   <thead>
@@ -20,7 +31,7 @@
       <td>{{ fila.zona }} ({{ fila.zona_tipo }})</td>
       <td>{{ fila.tipo_evento }}</td>
       <td>{{ fila.nivel_coincidencia }}</td>
-      <td>{{ fila.estado }}</td>
+      <td class="{% if fila.estado in ['SIMULADA','ACEPTADA_SMTP'] %}estado-ok{% elif fila.estado in ['FALLIDA','ERROR'] %}estado-bad{% elif fila.estado in ['REINTENTANDO','PENDIENTE','EN_PROCESO'] %}estado-warn{% endif %}">{{ fila.estado }}</td>
       <td>{{ fila.intentos }}</td>
       <td>{{ fila.creada_en }}</td>
     </tr>

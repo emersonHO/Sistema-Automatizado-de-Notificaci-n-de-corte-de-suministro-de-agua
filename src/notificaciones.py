@@ -1,29 +1,28 @@
-"""Cola transaccional (outbox) y envío SMTP desactivado por defecto."""
+"""Cola transaccional (outbox) y entrega simulada. SMTP real permanece opt-in."""
 
 from __future__ import annotations
 
 import json
 import logging
-import smtplib
-from datetime import datetime, timezone
-from email.message import EmailMessage
+import os
+import socket
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from psycopg.rows import dict_row
+
 from src.config import (
-    BASE_URL,
+    API_URL,
     CARPETA_SIMULACIONES,
-    MODO_ENVIO,
-    SMTP_ENABLED,
-    SMTP_FROM,
-    SMTP_HOST,
-    SMTP_PASSWORD,
-    SMTP_PORT,
-    SMTP_STARTTLS,
-    SMTP_USER,
+    NOTIF_BACKOFF_BASE_S,
+    NOTIF_MAX_INTENTOS,
+    NOTIF_SIMULAR_FALLO,
     ZONA_SISTEMA,
 )
+from src.correo import debe_enviar_smtp, enviar as enviar_correo, modo_canal
+from src.url_publica import url_base
 from src.correspondencia import coincidencia_notificable, evaluar_par
+from src.solicitudes import pid_sesion_viva
 from src.suscripciones import suscripciones_activas
 
 logger = logging.getLogger(__name__)
@@ -33,6 +32,15 @@ ASUNTOS = {
     "MODIFICADA": "Actualización: cambió una interrupción vinculada a tu zona de interés",
     "CANCELADA": "Aviso: se reportó la cancelación de una interrupción en tu zona de interés",
 }
+
+ESTADOS_RECLAMABLES = ("PENDIENTE", "REINTENTANDO", "FALLIDA")
+ESTADOS_TERMINALES = frozenset(
+    {"SIMULADA", "ACEPTADA_SMTP", "DESCARTADA", "CANCELADA", "ERROR"}
+)
+
+
+class EntregaSimuladaError(Exception):
+    """Fallo controlado de la simulación de entrega (no es un envío real)."""
 
 
 def _enmascarar(correo: str) -> str:
@@ -46,56 +54,93 @@ def _enmascarar(correo: str) -> str:
     return f"{visible}@{dominio}"
 
 
-def renderizar_mensaje(tipo: str, interrupcion: dict, coincidencia: dict, zona: dict) -> tuple[str, str, str]:
-    asunto = ASUNTOS[tipo]
-    distrito = interrupcion.get("municipalidad") or "No informado"
-    areas = interrupcion.get("areas_afectadas") or "No informado"
-    causa = interrupcion.get("causa") or "No informado"
-    tipo_inc = interrupcion.get("tipo_incid") or "No informado"
-    fec_det = interrupcion.get("fec_deteccion") or "No informado"
-    fec_est = interrupcion.get("fec_estimada") or "No informado"
-    ref = interrupcion.get("cod_incidencia") or interrupcion.get("id")
-    nivel = coincidencia.get("nivel")
-    explicacion = coincidencia.get("explicacion")
+def _dato(valor) -> str | None:
+    if valor is None:
+        return None
+    texto = str(valor).strip()
+    if not texto or texto.lower() in {"none", "null", "nan"}:
+        return None
+    return texto
 
-    texto = f"""Se ha identificado una interrupción reportada que podría afectar una de las zonas que registraste.
 
-Zona de interés: {zona.get("nombre")} ({zona.get("tipo")})
-Nivel de coincidencia: {nivel}
-Distrito reportado: {distrito}
-Tipo de interrupción: {tipo_inc}
-Fechas y horas reportadas por la fuente: {fec_det} a {fec_est}
-Áreas afectadas reportadas: {areas}
-Motivo informado: {causa}
-Identificador de referencia: {ref}
-Detección por el sistema (UTC): {datetime.now(timezone.utc).isoformat()}
+def _linea(etiqueta: str, valor) -> str | None:
+    texto = _dato(valor)
+    if texto is None:
+        return None
+    return f"{etiqueta}: {texto}"
 
-{explicacion}
 
-Importante:
-- La información procede de una fuente pública de un tercero y puede actualizarse.
-- Una coincidencia territorial no confirma que tu vivienda esté afectada.
-- Este sistema no reemplaza los canales oficiales de la empresa prestadora.
+def renderizar_mensaje(
+    tipo: str,
+    interrupcion: dict,
+    coincidencia: dict,
+    zona: dict,
+    usuario_id: int | None = None,
+) -> tuple[str, str, str]:
+    from src.plantillas_correo import interrupcion as plantilla_interrupcion
+    from src.tokens import enlace_baja, enlace_gestion
 
-Si ya no deseas recibir avisos, usa la opción de baja en el panel de suscripciones.
-"""
-    html = f"""<!DOCTYPE html>
-<html lang="es"><body style="font-family:Georgia,serif;color:#1b1b1b">
-<p>Se ha identificado una interrupción reportada que <strong>podría afectar</strong> una de las zonas que registraste.</p>
-<ul>
-<li>Zona de interés: {zona.get("nombre")} ({zona.get("tipo")})</li>
-<li>Nivel de coincidencia: {nivel}</li>
-<li>Distrito reportado: {distrito}</li>
-<li>Tipo de interrupción: {tipo_inc}</li>
-<li>Fechas y horas reportadas: {fec_det} a {fec_est}</li>
-<li>Áreas afectadas reportadas: {areas}</li>
-<li>Motivo informado: {causa}</li>
-<li>Identificador de referencia: {ref}</li>
-</ul>
-<p>{explicacion}</p>
-<p><em>La información procede de una fuente pública de un tercero y puede actualizarse. Este aviso no confirma la afectación de una vivienda ni reemplaza los canales oficiales.</em></p>
-</body></html>"""
-    return asunto, texto, html
+    base = url_base()
+    uid = usuario_id or zona.get("usuario_id") or 0
+    gestion = enlace_gestion(base, int(uid)) if uid else base
+    baja = enlace_baja(base, int(uid)) if uid else base
+    return plantilla_interrupcion(tipo, interrupcion, coincidencia, zona, gestion, baja)
+
+
+def _ya_notificado(cursor, usuario_id: int, interrupcion_id: int, version_relevante: int, tipo: str) -> bool:
+    cursor.execute(
+        """
+        SELECT 1 FROM notificaciones
+        WHERE usuario_id = %s
+          AND interrupcion_id = %s
+          AND version_relevante = %s
+          AND tipo_evento = %s
+        LIMIT 1
+        """,
+        (usuario_id, interrupcion_id, version_relevante, tipo),
+    )
+    return cursor.fetchone() is not None
+
+
+def _insertar_notificacion(cursor, sus, evento, coincidencia_id, resultado, asunto, texto, html, tipo: str) -> int:
+    if _ya_notificado(
+        cursor,
+        sus["usuario_id"],
+        int(evento["id"]),
+        evento["version_relevante"],
+        tipo,
+    ):
+        return 0
+    motivo = f"{tipo}: {resultado.get('explicacion') or 'coincidencia notificable'}"
+    cursor.execute(
+        """
+        INSERT INTO notificaciones (
+            usuario_id, suscripcion_id, interrupcion_id, coincidencia_id,
+            version_relevante, hash_relevante, tipo_evento, nivel_coincidencia,
+            estado, canal, motivo, asunto, cuerpo_texto, cuerpo_html, max_intentos
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, 'PENDIENTE', 'simulacion', %s, %s, %s, %s, %s
+        )
+        ON CONFLICT (suscripcion_id, interrupcion_id, version_relevante, tipo_evento)
+        DO NOTHING
+        """,
+        (
+            sus["usuario_id"],
+            sus["suscripcion_id"],
+            int(evento["id"]),
+            coincidencia_id,
+            evento["version_relevante"],
+            evento["hash_relevante"],
+            tipo,
+            resultado["nivel"],
+            motivo,
+            asunto,
+            texto,
+            html,
+            NOTIF_MAX_INTENTOS,
+        ),
+    )
+    return cursor.rowcount
 
 
 def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], eventos: list[dict], ejecucion_id: int | None) -> dict:
@@ -120,6 +165,12 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
             if not registro:
                 continue
             for sus in activas:
+                if tipo == "NUEVA" and not sus.get("alerta_nueva", True):
+                    continue
+                if tipo == "MODIFICADA" and not sus.get("alerta_modificada", True):
+                    continue
+                if tipo == "CANCELADA" and not sus.get("alerta_cancelacion", True):
+                    continue
                 zona = {
                     "id": sus["zona_id"],
                     "tipo": sus["tipo"],
@@ -127,6 +178,7 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
                     "nombre_normalizado": sus["nombre_normalizado"],
                     "distrito_padre": sus["distrito_padre"],
                     "ambito_lima": sus["ambito_lima"],
+                    "usuario_id": sus["usuario_id"],
                 }
                 resultado = evaluar_par(registro, zona)
                 if resultado is None:
@@ -156,33 +208,9 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
                 if not coincidencia_notificable(resultado):
                     continue
                 asunto, texto, html = renderizar_mensaje(tipo, registro, resultado, zona)
-                cursor.execute(
-                    """
-                    INSERT INTO notificaciones (
-                        usuario_id, suscripcion_id, interrupcion_id, coincidencia_id,
-                        version_relevante, hash_relevante, tipo_evento, nivel_coincidencia,
-                        estado, asunto, cuerpo_texto, cuerpo_html
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, 'PENDIENTE', %s, %s, %s
-                    )
-                    ON CONFLICT (suscripcion_id, interrupcion_id, version_relevante, tipo_evento)
-                    DO NOTHING
-                    """,
-                    (
-                        sus["usuario_id"],
-                        sus["suscripcion_id"],
-                        int(evento["id"]),
-                        coincidencia_id,
-                        evento["version_relevante"],
-                        evento["hash_relevante"],
-                        tipo,
-                        resultado["nivel"],
-                        asunto,
-                        texto,
-                        html,
-                    ),
+                creadas += _insertar_notificacion(
+                    cursor, sus, evento, coincidencia_id, resultado, asunto, texto, html, tipo
                 )
-                creadas += cursor.rowcount
     return {
         "coincidencias": coincidencias,
         "coincidencias_ambiguas": ambiguas,
@@ -191,12 +219,7 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
 
 
 def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None) -> dict:
-    """Avisa a suscriptores nuevos sobre incidencias ya persistidas.
-
-    Solo crea un primer aviso (NUEVA o CANCELADA) si esa suscripción aún no
-    tiene ninguna notificación para la incidencia. Las modificaciones
-    posteriores siguen el flujo de eventos relevantes.
-    """
+    """Avisa a suscriptores nuevos sobre incidencias ya persistidas."""
     activas = suscripciones_activas(conexion)
     creadas = 0
     coincidencias = 0
@@ -219,6 +242,10 @@ def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None)
                 "CANCELADA", "CANCELADO", "ANULADA", "ANULADO", "CANCELACION"
             } else "NUEVA"
             for sus in activas:
+                if tipo == "NUEVA" and not sus.get("alerta_nueva", True):
+                    continue
+                if tipo == "CANCELADA" and not sus.get("alerta_cancelacion", True):
+                    continue
                 cursor.execute(
                     """
                     SELECT 1 FROM notificaciones
@@ -236,6 +263,7 @@ def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None)
                     "nombre_normalizado": sus["nombre_normalizado"],
                     "distrito_padre": sus["distrito_padre"],
                     "ambito_lima": sus["ambito_lima"],
+                    "usuario_id": sus["usuario_id"],
                 }
                 resultado = evaluar_par(registro, zona)
                 if resultado is None:
@@ -265,53 +293,19 @@ def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None)
                 if not coincidencia_notificable(resultado):
                     continue
                 asunto, texto, html = renderizar_mensaje(tipo, registro, resultado, zona)
-                cursor.execute(
-                    """
-                    INSERT INTO notificaciones (
-                        usuario_id, suscripcion_id, interrupcion_id, coincidencia_id,
-                        version_relevante, hash_relevante, tipo_evento, nivel_coincidencia,
-                        estado, asunto, cuerpo_texto, cuerpo_html
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, 'PENDIENTE', %s, %s, %s
-                    )
-                    ON CONFLICT (suscripcion_id, interrupcion_id, version_relevante, tipo_evento)
-                    DO NOTHING
-                    """,
-                    (
-                        sus["usuario_id"],
-                        sus["suscripcion_id"],
-                        fila["id"],
-                        coincidencia_id,
-                        fila["version_relevante"],
-                        fila["hash_relevante"],
-                        tipo,
-                        resultado["nivel"],
-                        asunto,
-                        texto,
-                        html,
-                    ),
+                evento = {
+                    "id": fila["id"],
+                    "version_relevante": fila["version_relevante"],
+                    "hash_relevante": fila["hash_relevante"],
+                }
+                creadas += _insertar_notificacion(
+                    cursor, sus, evento, coincidencia_id, resultado, asunto, texto, html, tipo
                 )
-                creadas += cursor.rowcount
     return {
         "coincidencias": coincidencias,
         "coincidencias_ambiguas": ambiguas,
         "notificaciones_creadas": creadas,
     }
-
-
-def _enviar_smtp(destinatario: str, asunto: str, texto: str, html: str) -> None:
-    mensaje = EmailMessage()
-    mensaje["Subject"] = asunto
-    mensaje["From"] = SMTP_FROM
-    mensaje["To"] = destinatario
-    mensaje.set_content(texto)
-    mensaje.add_alternative(html, subtype="html")
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as cliente:
-        if SMTP_STARTTLS:
-            cliente.starttls()
-        if SMTP_USER:
-            cliente.login(SMTP_USER, SMTP_PASSWORD)
-        cliente.send_message(mensaje)
 
 
 def _guardar_simulacion(notificacion: dict, destinatario: str) -> Path:
@@ -321,95 +315,278 @@ def _guardar_simulacion(notificacion: dict, destinatario: str) -> Path:
     payload = {
         "notificacion_id": notificacion["id"],
         "destinatario_enmascarado": _enmascarar(destinatario),
-        "tipo_evento": notificacion["tipo_evento"],
-        "interrupcion_id": notificacion["interrupcion_id"],
+        "tipo_evento": notificacion.get("tipo_evento"),
+        "interrupcion_id": notificacion.get("interrupcion_id"),
         "asunto": notificacion["asunto"],
         "cuerpo_texto": notificacion["cuerpo_texto"],
         "modo": "simulacion",
+        "resultado": "SIMULADA",
         "zona_sistema": ZONA_SISTEMA,
-        "base_url": BASE_URL,
+        "base_url": url_base(),
     }
     ruta.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return ruta
 
 
-def procesar_outbox(conexion, limite: int = 50, forzar_simulacion: bool = False) -> dict:
+def segundos_backoff(intentos: int) -> int:
+    base = max(0, NOTIF_BACKOFF_BASE_S)
+    return min(3600, base * (2 ** max(0, intentos - 1)))
+
+
+def worker_id_local() -> str:
+    return f"{socket.gethostname()}-{os.getpid()}"
+
+
+def reconciliar_notificaciones_huerfanas(conexion) -> int:
+    """Devuelve a REINTENTANDO las filas EN_PROCESO cuyo worker ya no está vivo."""
+    recuperadas = 0
+    with conexion.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT id, backend_pid, intentos, max_intentos
+            FROM notificaciones
+            WHERE estado = 'EN_PROCESO'
+            """
+        )
+        filas = list(cursor.fetchall())
+        for fila in filas:
+            vivo = pid_sesion_viva(fila.get("backend_pid"), conexion)
+            if vivo:
+                continue
+            max_i = int(fila.get("max_intentos") or NOTIF_MAX_INTENTOS)
+            intentos = int(fila.get("intentos") or 0)
+            if intentos >= max_i:
+                estado = "FALLIDA"
+                proximo = None
+            else:
+                estado = "REINTENTANDO"
+                proximo = datetime.now(timezone.utc)
+            cursor.execute(
+                """
+                UPDATE notificaciones
+                SET estado = %s,
+                    worker_id = NULL,
+                    backend_pid = NULL,
+                    heartbeat_en = NULL,
+                    proximo_intento = %s,
+                    recuperaciones = COALESCE(recuperaciones, 0) + 1,
+                    ultimo_error = 'Recuperada: sesión del worker no está viva',
+                    actualizada_en = NOW()
+                WHERE id = %s AND estado = 'EN_PROCESO'
+                """,
+                (estado, proximo, fila["id"]),
+            )
+            if cursor.rowcount:
+                recuperadas += cursor.rowcount
+                logger.warning(
+                    "Notificación huérfana recuperada",
+                    extra={
+                        "evento": "notificacion_recuperada",
+                        "notificacion_id": fila["id"],
+                        "estado": estado,
+                    },
+                )
+    return recuperadas
+
+
+def reclamar_notificacion(conexion, worker_id: str | None = None) -> dict | None:
+    ident = worker_id or worker_id_local()
+    with conexion.cursor(row_factory=dict_row) as cursor:
+        cursor.execute("SELECT pg_backend_pid() AS pid")
+        pid = int(cursor.fetchone()["pid"])
+        cursor.execute(
+            """
+            WITH candidata AS (
+                SELECT n.id
+                FROM notificaciones n
+                WHERE n.estado IN ('PENDIENTE', 'REINTENTANDO', 'FALLIDA')
+                  AND n.intentos < COALESCE(n.max_intentos, %s)
+                  AND (n.proximo_intento IS NULL OR n.proximo_intento <= NOW())
+                ORDER BY n.creada_en
+                LIMIT 1
+                FOR UPDATE OF n SKIP LOCKED
+            )
+            UPDATE notificaciones n
+            SET estado = 'EN_PROCESO',
+                worker_id = %s,
+                backend_pid = %s,
+                heartbeat_en = NOW(),
+                procesada_en = COALESCE(n.procesada_en, NOW()),
+                actualizada_en = NOW()
+            FROM candidata
+            WHERE n.id = candidata.id
+            RETURNING n.*, (SELECT u.correo FROM usuarios u WHERE u.id = n.usuario_id) AS correo
+            """,
+            (NOTIF_MAX_INTENTOS, ident, pid),
+        )
+        fila = cursor.fetchone()
+        if fila:
+            logger.info(
+                "Notificación reclamada",
+                extra={
+                    "evento": "notificacion_reclamada",
+                    "notificacion_id": fila["id"],
+                    "worker_id": ident,
+                    "estado": "EN_PROCESO",
+                },
+            )
+        return dict(fila) if fila else None
+
+
+def _registrar_intento(cursor, notificacion_id: int, resultado: str, mensaje: str, modo: str, worker_id: str | None) -> None:
+    cursor.execute(
+        """
+        INSERT INTO intentos_notificacion (notificacion_id, resultado, mensaje, modo, worker_id)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (notificacion_id, resultado, mensaje, modo, worker_id),
+    )
+
+
+def procesar_reclamada(
+    conexion,
+    fila: dict,
+    *,
+    forzar_simulacion: bool = True,
+    simular_fallo: bool | None = None,
+) -> str:
+    """Entrega una fila ya reclamada (EN_PROCESO). No crea notificaciones nuevas."""
+    if fila.get("estado") in ESTADOS_TERMINALES and fila.get("estado") != "EN_PROCESO":
+        return str(fila["estado"])
+
     modo = "simulacion"
     enviar_real = False
-    if not forzar_simulacion and SMTP_ENABLED and MODO_ENVIO == "real":
-        modo = "real"
+    if not forzar_simulacion and debe_enviar_smtp():
+        modo = modo_canal()
         enviar_real = True
 
+    fallar = NOTIF_SIMULAR_FALLO if simular_fallo is None else simular_fallo
+    with conexion.cursor(row_factory=dict_row) as cursor:
+        try:
+            if fallar:
+                raise EntregaSimuladaError("Fallo simulado de entrega (NOTIF_SIMULAR_FALLO)")
+            if enviar_real:
+                mensaje = enviar_correo(
+                    fila["correo"], fila["asunto"], fila["cuerpo_texto"], fila["cuerpo_html"]
+                )
+                estado = "ACEPTADA_SMTP"
+                resultado = "ACEPTADA_SMTP"
+                cursor.execute(
+                    "UPDATE notificaciones SET canal = 'smtp' WHERE id = %s",
+                    (fila["id"],),
+                )
+            else:
+                from src.config import OPERACION_PUBLICA
+
+                if OPERACION_PUBLICA:
+                    raise RuntimeError(
+                        "SMTP_NO_CONFIGURADO: operación pública no simula el envío a ciudadanos"
+                    )
+                _guardar_simulacion(fila, fila["correo"])
+                estado = "SIMULADA"
+                resultado = "SIMULADA"
+                mensaje = "Envío simulado. No se contactó a un destinatario real ni a SMTP."
+            _registrar_intento(cursor, fila["id"], resultado, mensaje, modo, fila.get("worker_id"))
+            cursor.execute(
+                """
+                UPDATE notificaciones
+                SET estado = %s,
+                    intentos = intentos + 1,
+                    ultimo_error = NULL,
+                    finalizada_en = NOW(),
+                    proximo_intento = NULL,
+                    worker_id = NULL,
+                    backend_pid = NULL,
+                    heartbeat_en = NULL,
+                    actualizada_en = NOW()
+                WHERE id = %s AND estado = 'EN_PROCESO'
+                """,
+                (estado, fila["id"]),
+            )
+            logger.info(
+                "Notificación procesada",
+                extra={
+                    "evento": "notificacion_resultado",
+                    "notificacion_id": fila["id"],
+                    "worker_id": fila.get("worker_id"),
+                    "estado": estado,
+                },
+            )
+            return estado
+        except Exception as error:
+            logger.exception(
+                "Fallo al procesar notificación %s",
+                fila["id"],
+                extra={"evento": "notificacion_error", "notificacion_id": fila["id"]},
+            )
+            intentos = int(fila.get("intentos") or 0) + 1
+            max_i = int(fila.get("max_intentos") or NOTIF_MAX_INTENTOS)
+            if intentos >= max_i:
+                estado = "FALLIDA"
+                proximo = None
+            else:
+                estado = "REINTENTANDO"
+                proximo = datetime.now(timezone.utc) + timedelta(seconds=segundos_backoff(intentos))
+            _registrar_intento(cursor, fila["id"], "FALLIDA", str(error)[:1000], modo, fila.get("worker_id"))
+            cursor.execute(
+                """
+                UPDATE notificaciones
+                SET estado = %s,
+                    intentos = %s,
+                    ultimo_error = %s,
+                    proximo_intento = %s,
+                    worker_id = NULL,
+                    backend_pid = NULL,
+                    heartbeat_en = NULL,
+                    actualizada_en = NOW()
+                WHERE id = %s AND estado = 'EN_PROCESO'
+                """,
+                (estado, intentos, str(error)[:1000], proximo, fila["id"]),
+            )
+            return estado
+
+
+def procesar_outbox(
+    conexion,
+    limite: int = 50,
+    forzar_simulacion: bool = False,
+    simular_fallo: bool | None = None,
+    worker_id: str | None = None,
+) -> dict:
+    modo = modo_canal() if (not forzar_simulacion and debe_enviar_smtp()) else "simulacion"
+
+    reconciliar_notificaciones_huerfanas(conexion)
     procesadas = 0
     simuladas = 0
     aceptadas = 0
     fallidas = 0
-    with conexion.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
-            """
-            SELECT n.*, u.correo
-            FROM notificaciones n
-            JOIN usuarios u ON u.id = n.usuario_id
-            WHERE n.estado IN ('PENDIENTE', 'FALLIDA')
-            ORDER BY n.creada_en
-            FOR UPDATE OF n SKIP LOCKED
-            LIMIT %s
-            """,
-            (limite,),
+    reintentando = 0
+    ident = worker_id or worker_id_local()
+    for _ in range(max(1, limite)):
+        fila = reclamar_notificacion(conexion, ident)
+        if not fila:
+            break
+        procesadas += 1
+        estado = procesar_reclamada(
+            conexion,
+            fila,
+            forzar_simulacion=forzar_simulacion,
+            simular_fallo=simular_fallo,
         )
-        filas = list(cursor.fetchall())
-        for fila in filas:
-            procesadas += 1
-            try:
-                if enviar_real:
-                    _enviar_smtp(fila["correo"], fila["asunto"], fila["cuerpo_texto"], fila["cuerpo_html"])
-                    estado = "ACEPTADA_SMTP"
-                    resultado = "ACEPTADA_SMTP"
-                    aceptadas += 1
-                    mensaje = "El servidor SMTP aceptó el mensaje; no se confirma la entrega al buzón."
-                else:
-                    _guardar_simulacion(fila, fila["correo"])
-                    estado = "SIMULADA"
-                    resultado = "SIMULADA"
-                    simuladas += 1
-                    mensaje = "Envío simulado. No se contactó a un destinatario real."
-                cursor.execute(
-                    """
-                    INSERT INTO intentos_notificacion (notificacion_id, resultado, mensaje, modo)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (fila["id"], resultado, mensaje, modo),
-                )
-                cursor.execute(
-                    """
-                    UPDATE notificaciones
-                    SET estado = %s, intentos = intentos + 1, ultimo_error = NULL, actualizada_en = NOW()
-                    WHERE id = %s
-                    """,
-                    (estado, fila["id"]),
-                )
-            except Exception as error:
-                fallidas += 1
-                logger.exception("Fallo al procesar notificación %s", fila["id"])
-                cursor.execute(
-                    """
-                    INSERT INTO intentos_notificacion (notificacion_id, resultado, mensaje, modo)
-                    VALUES (%s, 'FALLIDA', %s, %s)
-                    """,
-                    (fila["id"], str(error), modo),
-                )
-                cursor.execute(
-                    """
-                    UPDATE notificaciones
-                    SET estado = 'FALLIDA', intentos = intentos + 1, ultimo_error = %s, actualizada_en = NOW()
-                    WHERE id = %s
-                    """,
-                    (str(error), fila["id"]),
-                )
+        if estado == "SIMULADA":
+            simuladas += 1
+        elif estado == "ACEPTADA_SMTP":
+            aceptadas += 1
+        elif estado == "REINTENTANDO":
+            reintentando += 1
+            fallidas += 1
+        elif estado == "FALLIDA":
+            fallidas += 1
     return {
         "procesadas": procesadas,
         "simuladas": simuladas,
         "aceptadas_smtp": aceptadas,
         "fallidas": fallidas,
+        "reintentando": reintentando,
         "modo": modo,
     }

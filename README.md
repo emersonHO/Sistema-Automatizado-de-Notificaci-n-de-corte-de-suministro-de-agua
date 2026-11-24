@@ -59,19 +59,38 @@ El envío SMTP real exige `SMTP_ENABLED=true`, `MODO_ENVIO=real` y `--envio-real
 python -m src.web
 ```
 
-Abra `http://127.0.0.1:8000`.
+Abra `http://127.0.0.1:8000` (web ciudadana). Administración: `/admin`.
 
-Pantallas: panel (administrativo si hay `ADMIN_PASSWORD`), interrupciones, suscripciones, notificaciones y ejecuciones.
-
-## Docker Compose (fase 1)
+## Docker Compose (fases 1 a 5)
 
 ```powershell
 copy .env.docker.example .env.docker
-docker compose --env-file .env.docker up -d --build db web
-docker compose --env-file .env.docker --profile pipeline run --rm pipeline python -m src.pipeline --desde-archivo /app/tests/fixtures/captura_minima.json
+notepad .env.docker
+docker compose --env-file .env.docker up -d --build
 ```
 
-Detalle en `docs/INSTALACION_WINDOWS.md` sección 7. n8n, Prometheus y Grafana **no** están en esta fase.
+Defina `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `INTERNAL_API_TOKEN`, `N8N_ENCRYPTION_KEY` y `GRAFANA_ADMIN_PASSWORD`.
+
+| Servicio | Dirección |
+|----------|-----------|
+| Web ciudadana | http://127.0.0.1:8000 |
+| Panel admin | http://127.0.0.1:8000/admin |
+| n8n | http://127.0.0.1:5678 |
+| Prometheus | http://127.0.0.1:9090 |
+| Grafana | http://127.0.0.1:3000 |
+| Mailpit | http://127.0.0.1:8025 |
+| PostgreSQL | no publicado |
+
+n8n: credencial Header Auth `FastAPI interno`; importar `n8n/workflows/*.json`. El programado permanece **inactivo** hasta validar. Detalle: `n8n/README.md`.
+
+SMTP de laboratorio: `SMTP_ENABLED=true` y `MODO_ENVIO=mailpit` (destinatarios ficticios). Por defecto sigue la simulación (`SIMULADA`).
+
+**Ciudadano:** [`docs/GUIA_CIUDADANO.md`](docs/GUIA_CIUDADANO.md)  
+**Público gratis desde Windows (sin VPS ni dominio):** [`docs/GUIA_DESPLIEGUE_GRATUITO_WINDOWS.md`](docs/GUIA_DESPLIEGUE_GRATUITO_WINDOWS.md) — `.\scripts\iniciar-publico.ps1`  
+**VPS de pago (opcional, más adelante):** [`docs/DEPLOYMENT_PRODUCTION.md`](docs/DEPLOYMENT_PRODUCTION.md) · [`docs/GUIA_OPERATIVA_PROPIETARIO.md`](docs/GUIA_OPERATIVA_PROPIETARIO.md)  
+**Laboratorio local:** [`docs/GUIA_OPERATIVA_COMPLETA.md`](docs/GUIA_OPERATIVA_COMPLETA.md)
+
+Instalación Windows (complemento): `docs/INSTALACION_WINDOWS.md`.
 
 ## Documentación de arquitectura
 
@@ -80,6 +99,12 @@ Detalle en `docs/INSTALACION_WINDOWS.md` sección 7. n8n, Prometheus y Grafana *
 - `docs/PLAN_EVOLUCION_ARQUITECTONICA.md` — fases 0–5
 - `docs/DECISIONES_ARQUITECTONICAS.md` — ADRs
 - `docs/DIAGNOSTICO_ARQUITECTURA.md` — auditoría previa
+- `docs/RESULTADOS_FASE_2.md` — evidencia de n8n y la cola
+- `docs/RESULTADOS_FASE_3.md` — motor de notificaciones y worker de outbox
+- `docs/OBSERVABILIDAD.md` — métricas, salud y fórmulas (fase 4)
+- `docs/RESULTADOS_FASE_4.md` — evidencia de observabilidad
+- `docs/RESULTADOS_FASE_5.md` — integración Prometheus, Grafana, Mailpit y CI
+- `docs/GUIA_OPERATIVA_COMPLETA.md` — instalación, uso, demostración y diagnóstico
 
 ## Pruebas
 

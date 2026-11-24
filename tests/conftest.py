@@ -16,6 +16,9 @@ os.environ.setdefault("DB_USER", "agua")
 os.environ.setdefault("DB_PASSWORD", "agua_local_dev")
 os.environ.setdefault("SMTP_ENABLED", "false")
 os.environ.setdefault("MODO_ENVIO", "simulacion")
+# El contenedor Compose puede traer ADMIN_PASSWORD; los tests HTML asumen panel abierto
+# salvo que el caso de prueba active la auth con monkeypatch.
+os.environ["ADMIN_PASSWORD"] = ""
 
 from src import config as config_mod  # noqa: E402
 
@@ -24,6 +27,7 @@ config_mod.DB_USER = os.environ["DB_USER"]
 config_mod.DB_PASSWORD = os.environ["DB_PASSWORD"]
 config_mod.SMTP_ENABLED = False
 config_mod.MODO_ENVIO = "simulacion"
+config_mod.ADMIN_PASSWORD = ""
 
 POSTGRES_DISPONIBLE = False
 
@@ -55,7 +59,23 @@ def pytest_collection_modifyitems(config, items):
     )
     for item in items:
         ruta = str(getattr(item, "fspath", ""))
-        if any(nombre in ruta for nombre in ("test_web.py", "test_pipeline.py", "test_notificaciones.py")):
+        if any(
+            nombre in ruta
+            for nombre in (
+                "test_web.py",
+                "test_pipeline.py",
+                "test_notificaciones.py",
+                "test_interno.py",
+                "test_solicitudes.py",
+                "test_worker.py",
+                "test_worker_notificaciones.py",
+                "test_fase3_notificaciones.py",
+                "test_observabilidad.py",
+                "test_metricas_prom.py",
+                "test_e2e_flujo.py",
+                "test_publico.py",
+            )
+        ):
             item.add_marker(skip)
         if "conexion" in getattr(item, "fixturenames", ()):
             item.add_marker(skip)
@@ -84,7 +104,8 @@ def conexion():
                 historial_interrupciones,
                 capturas,
                 interrupciones,
-                ejecuciones_proceso
+                ejecuciones_proceso,
+                solicitudes_ejecucion
             RESTART IDENTITY CASCADE
             """
         )

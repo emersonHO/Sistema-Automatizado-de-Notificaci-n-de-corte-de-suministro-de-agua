@@ -8,6 +8,8 @@ data/raw/
 data/processed/
 data/simulaciones/
 data/evaluacion/
+data/url_publica.txt
+backups/
 *.pyc
 .coverage
 htmlcov/

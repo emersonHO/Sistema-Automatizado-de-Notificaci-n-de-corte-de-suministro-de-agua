@@ -20,6 +20,7 @@ COPY src ./src
 COPY database ./database
 COPY scripts ./scripts
 COPY tests ./tests
+COPY n8n/workflows ./n8n/workflows
 COPY pytest.ini .
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh \

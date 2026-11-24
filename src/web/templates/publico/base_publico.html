@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Avisos de agua · Lima Metropolitana{% endblock %}</title>
+  <link href="/static/publico.css" rel="stylesheet">
+</head>
+<body>
+  <header class="pub-top">
+    <div class="pub-wrap pub-nav">
+      <a class="pub-marca" href="/">Avisos de agua</a>
+      <nav>
+        <a href="/#como">Cómo funciona</a>
+        <a href="/#suscribir">Suscribirse</a>
+        <a href="/interrupciones">Interrupciones</a>
+        <a href="/privacidad">Privacidad</a>
+      </nav>
+    </div>
+  </header>
+  <main class="pub-wrap">
+    {% if flash %}<p class="pub-flash" role="status">{{ flash }}</p>{% endif %}
+    {% block contenido %}{% endblock %}
+  </main>
+  <footer class="pub-pie">
+    <div class="pub-wrap">
+      Servicio informativo independiente. La fuente de datos es pública de un tercero y
+      <strong>no es una API oficial de SEDAPAL</strong>.
+      Una coincidencia por distrito no confirma que tu vivienda esté afectada.
+    </div>
+  </footer>
+</body>
+</html>

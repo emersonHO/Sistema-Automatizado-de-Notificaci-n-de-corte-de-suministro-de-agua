@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Destinatarios de prueba{% endblock %}
+{% block contenido %}
+<h1>Destinatarios de prueba</h1>
+<p class="text-muted">Correos enmascarados. No use cuentas reales de ciudadanos.</p>
+<div class="table-responsive">
+<table class="table table-sm table-striped">
+  <thead><tr><th>Usuario</th><th>Destinatario</th><th>Confirmado</th><th>Suscripción</th><th>Zona</th><th>Activa</th></tr></thead>
+  <tbody>
+  {% for f in filas %}
+    <tr>
+      <td>{{ f.usuario_id }}</td>
+      <td>{{ f.destinatario }}</td>
+      <td>{{ f.correo_confirmado }}</td>
+      <td>{{ f.suscripcion_id or '—' }}</td>
+      <td>{% if f.zona %}{{ f.zona }} ({{ f.zona_tipo }}){% else %}—{% endif %}</td>
+      <td>{{ f.activa }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="text-muted">No hay destinatarios de prueba.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p><a href="/suscripciones">Registrar zona de interés</a></p>
+{% endblock %}

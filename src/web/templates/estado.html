@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Estado de servicios{% endblock %}
+{% block contenido %}
+<h1>Estado de servicios</h1>
+<p class="text-muted">Sondeos HTTP de 1,5 s desde este contenedor. Un fallo de Grafana o Prometheus no detiene el pipeline.</p>
+<div class="row g-3">
+  {% for nombre, dato in servicios.items() %}
+  <div class="col-md-4">
+    <div class="card p-3">
+      <div class="text-muted">{{ nombre }}</div>
+      <div class="{% if dato.ok %}estado-ok{% else %}estado-bad{% endif %}">
+        {% if dato.ok %}Disponible{% else %}No disponible{% endif %}
+      </div>
+      <div class="small">HTTP {{ dato.codigo or '—' }} · {{ dato.ms }} ms</div>
+      {% if dato.error %}<div class="small text-muted">{{ dato.error }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<p class="mt-4 small">UIs en el host: panel :8000 · n8n :5678 · Prometheus :9090 · Grafana :3000 · Mailpit :8025. PostgreSQL no se publica.</p>
+{% endblock %}

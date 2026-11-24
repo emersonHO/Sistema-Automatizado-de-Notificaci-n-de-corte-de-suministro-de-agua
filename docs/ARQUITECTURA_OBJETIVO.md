@@ -73,15 +73,16 @@ flowchart TB
   GRAF --> PROM
 ```
 
-| Servicio Compose | Fase | Estado al cerrar fase 1 |
-|------------------|------|-------------------------|
-| `db` PostgreSQL + volumen + healthcheck, **sin puerto publicado en el host** | 1 | Implementado (archivos; verificación Docker según entorno) |
-| `web` FastAPI | 1 | Implementado (archivos) |
-| `pipeline` (mismo imagen, comando distinto) | 1 | Implementado (archivos; perfil `pipeline`) |
-| `notification-worker` | 3 | Pendiente |
-| `n8n` + BD/credenciales separadas | 2 | Pendiente |
-| `mailpit` | 2–3 | Pendiente |
-| `prometheus` / `grafana` | 4 | Pendiente |
+| Servicio Compose | Fase | Estado |
+|------------------|------|--------|
+| `db` PostgreSQL + volumen + healthcheck, **sin puerto publicado en el host** | 1 | Implementado y verificado (Windows 11 + Docker Desktop) |
+| `web` FastAPI | 1 | Implementado y verificado |
+| `pipeline` (CLI, perfil) | 1 | Implementado |
+| `pipeline-worker` | 2 | Implementado |
+| `notification-worker` | 3 | Implementado |
+| `n8n` + SQLite en `n8n_data` | 2 | Implementado (imagen `n8nio/n8n:2.48.4`) |
+| `mailpit` | 5 | Implementado (`axllent/mailpit:v1.21.8`, UI 127.0.0.1:8025) |
+| `prometheus` / `grafana` | 5 | Implementados (ADR-012; complementan el snapshot SQL) |
 
 Una sola imagen Python para `web` y `pipeline`. n8n no ejecuta SQL del dominio.
 
@@ -118,7 +119,7 @@ flowchart TB
   EVAL --> COR
 ```
 
-Todos los módulos de la tabla anterior **existen** en `src/`. El worker de notificaciones como **proceso independiente** está **pendiente** (fase 3); hoy el outbox se consume al final del pipeline.
+Todos los módulos de la tabla anterior **existen** en `src/`. El worker de notificaciones es `src/worker_notificaciones.py` (fase 3). El `pipeline-worker` de Compose **no** consume el outbox.
 
 ---
 
@@ -138,15 +139,18 @@ sequenceDiagram
   P->>DB: interrupciones + historial
   P->>DB: coincidencias
   P->>O: notificaciones PENDIENTE
-  P->>SMTP: SIMULADA o ACEPTADA_SMTP
+  participant W as notification-worker
+  W->>O: reclamo EN_PROCESO
+  W->>SMTP: SIMULADA (archivo; no SMTP)
   Note over P,DB: advisory lock 570114
+  Note over W,O: SKIP LOCKED + backoff
 ```
 
 | Paso | Estado |
 |------|--------|
 | Ingesta, JSON, hashes, historial, correspondencia, outbox | Implementado |
-| Consumo outbox en proceso separado | Pendiente (fase 3) |
-| Disparo por n8n sin bloquear HTTP | Pendiente (fase 2; tabla de trabajos) |
+| Consumo outbox en proceso separado | Implementado (fase 3) |
+| Disparo por n8n sin bloquear HTTP | Implementado (fase 2) |
 
 ---
 
@@ -189,7 +193,7 @@ sequenceDiagram
   participant JOB as solicitudes_ejecucion
   participant W as pipeline-worker
   SCH->>N8: cron
-  N8->>API: POST /admin/pipeline/ejecuciones
+  N8->>API: POST /internal/v1/pipeline/ejecuciones (Bearer)
   API->>JOB: insertar PENDIENTE
   API-->>N8: ejecucion_id
   W->>JOB: reclamar trabajo + advisory lock
@@ -226,8 +230,8 @@ Historial y outbox son **lógicos** en el mismo PostgreSQL. Id de incidencia de 
 
 | Pieza | Estado |
 |-------|--------|
-| Logs de texto INFO | Implementado (fase 1 añade formato JSON opcional) |
-| Prometheus / Grafana | Pendiente fase 4 |
+| Logs de texto INFO | Implementado (JSON opcional, correlación) |
+| Prometheus / Grafana | Implementado (fase 5, ADR-012) |
 | Pytest | Implementado |
-| GitHub Actions | Pendiente fase 5 |
-| Mailpit | Pendiente fase 2–3 |
+| GitHub Actions | Implementado (`.github/workflows/ci.yml`; ejecución en GitHub pendiente de push) |
+| Mailpit | Implementado (fase 5, SMTP de laboratorio) |

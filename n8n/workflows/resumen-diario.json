@@ -1,0 +1,36 @@
+{
+  "name": "Resumen diario opcional",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Lima" },
+  "notes": "POST interno /resumenes. Solo suscriptores con resumen_diario. Inactivo por defecto.",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "name": "Diario 07:00 Lima",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://web:8000/internal/v1/resumenes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 60000 }
+      },
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "name": "Generar resúmenes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "credentials": { "httpHeaderAuth": { "id": "fastapi-interno", "name": "FastAPI interno" } }
+    }
+  ],
+  "connections": {
+    "Diario 07:00 Lima": { "main": [[{ "node": "Generar resúmenes", "type": "main", "index": 0 }]] }
+  }
+}

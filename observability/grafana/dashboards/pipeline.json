@@ -1,0 +1,34 @@
+{
+  "uid": "agua-pipeline",
+  "title": "Pipeline",
+  "timezone": "utc",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "bargauge", "title": "Ejecuciones por estado",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_pipeline_ejecuciones", "legendFormat": "{{estado}}", "refId": "A" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Duración (s)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_pipeline_duracion_segundos", "legendFormat": "{{agregado}}", "refId": "A" }]
+    },
+    {
+      "id": 3, "type": "bargauge", "title": "Registros acumulados",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_pipeline_registros", "legendFormat": "{{tipo}}", "refId": "A" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Espera en cola (s)",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_solicitudes_espera_segundos", "legendFormat": "{{agregado}}", "refId": "A" }]
+    }
+  ]
+}
