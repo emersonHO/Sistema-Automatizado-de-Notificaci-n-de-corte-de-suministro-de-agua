@@ -5,9 +5,19 @@ class _Resp:
     def __init__(self, codigo, payload):
         self.status_code = codigo
         self._payload = payload
+        self.text = str(payload)
 
     def json(self):
         return self._payload
+
+
+def test_formato_remitente_no_anida(monkeypatch):
+    monkeypatch.setattr(c, "SMTP_FROM", "Avisos <onboarding@resend.dev>")
+    monkeypatch.setattr(c, "SMTP_FROM_NAME", "Avisos de agua Lima")
+    assert c.formato_remitente() == "Avisos <onboarding@resend.dev>"
+    monkeypatch.setattr(c, "SMTP_FROM", "onboarding@resend.dev")
+    assert "onboarding@resend.dev" in c.formato_remitente()
+    assert c.formato_remitente().count("<") == 1
 
 
 def test_resend_aceptado(monkeypatch):

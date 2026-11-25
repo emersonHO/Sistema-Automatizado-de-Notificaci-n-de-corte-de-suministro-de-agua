@@ -15,7 +15,7 @@ def test_panel_y_suscripcion(conexion):
     cliente = TestClient(app)
     r = cliente.get("/")
     assert r.status_code == 200
-    assert "Suscribirse" in r.text
+    assert "suscribir" in r.text.lower() or "Registrarme" in r.text
     r = cliente.get("/admin")
     assert r.status_code == 200
     assert "Resumen operativo" in r.text

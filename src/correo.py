@@ -91,8 +91,19 @@ def advertencia_smtp_publico() -> str | None:
     return None
 
 
+def formato_remitente() -> str:
+    """Resend rechaza From anidado del tipo Nombre <Nombre <correo>>."""
+    crudo = (SMTP_FROM or "").strip()
+    nombre = (SMTP_FROM_NAME or "Avisos de agua Lima").strip()
+    if "<" in crudo and ">" in crudo:
+        return crudo
+    if not crudo:
+        return formataddr((nombre, "onboarding@resend.dev"))
+    return formataddr((nombre, crudo))
+
+
 def _remitente() -> str:
-    return formataddr((SMTP_FROM_NAME, SMTP_FROM))
+    return formato_remitente()
 
 
 def _enviar_smtp(
@@ -153,11 +164,24 @@ def _enviar_resend(destinatario: str, asunto: str, texto: str, html: str) -> str
     except httpx.HTTPError as error:
         raise RuntimeError("No se pudo contactar a Resend") from error
     if respuesta.status_code >= 400:
+        detalle = (respuesta.text or "")[:240]
         logger.error(
             "Resend rechazó el envío",
-            extra={"evento": "resend_rechazo", "http_status": respuesta.status_code},
+            extra={
+                "evento": "resend_rechazo",
+                "http_status": respuesta.status_code,
+                "detalle": detalle,
+            },
         )
-        raise RuntimeError(f"Resend rechazó el envío (HTTP {respuesta.status_code})")
+        pista = ""
+        if respuesta.status_code in {403, 422}:
+            pista = (
+                " Revise RESEND_API_KEY y SMTP_FROM "
+                "(use onboarding@resend.dev o un dominio verificado en Resend)."
+            )
+        raise RuntimeError(
+            f"Resend rechazó el envío (HTTP {respuesta.status_code}).{pista}"
+        )
     identificador = ""
     try:
         identificador = str((respuesta.json() or {}).get("id") or "")

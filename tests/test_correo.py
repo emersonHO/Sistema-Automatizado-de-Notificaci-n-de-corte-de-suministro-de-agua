@@ -13,8 +13,10 @@ def test_smtp_apagado_por_defecto(monkeypatch):
 def test_smtp_opt_in(monkeypatch):
     from src import correo as c
 
+    monkeypatch.setattr(c, "CORREO_PROVEEDOR", "mailpit")
     monkeypatch.setattr(c, "SMTP_ENABLED", True)
     monkeypatch.setattr(c, "MODO_ENVIO", "mailpit")
+    monkeypatch.setattr(c, "OPERACION_PUBLICA", False)
     assert c.debe_enviar_smtp() is True
     assert c.modo_canal() == "smtp"
 
@@ -42,6 +44,9 @@ def test_enviar_usa_smtp_mock(monkeypatch):
             return None
 
     monkeypatch.setattr(c, "smtplib", type("S", (), {"SMTP": Dummy})())
+    monkeypatch.setattr(c, "CORREO_PROVEEDOR", "smtp")
+    monkeypatch.setattr(c, "SMTP_ENABLED", True)
+    monkeypatch.setattr(c, "MODO_ENVIO", "real")
     monkeypatch.setattr(c, "SMTP_STARTTLS", False)
     monkeypatch.setattr(c, "SMTP_USER", "")
     texto = c.enviar("demo@example.com", "Asunto", "Cuerpo", "<p>x</p>", host="mailpit", puerto=1025)

@@ -10,6 +10,8 @@ from fastapi.templating import Jinja2Templates
 
 from src.config import PUBLIC_REVELAR_ENLACE, TRUST_PROXY
 from src.url_publica import url_base
+from src.correo import advertencia_smtp_publico
+from src.web.consultas import listar_interrupciones
 from src.ciudadano import (
     MENSAJE_GENERICO,
     actualizar_prefs,
@@ -48,6 +50,11 @@ def _ctx(request: Request, **kwargs):
         "csrf": csrf_token(request),
         "es_admin": sesion_admin(request),
         "flash": request.session.pop("flash", None),
+        "aviso_smtp": advertencia_smtp_publico(),
+        "aviso_fuente": (
+            "La información procede de una fuente pública de un tercero "
+            "y no reemplaza los canales oficiales."
+        ),
     }
     datos.update(kwargs)
     return datos
@@ -57,7 +64,16 @@ def _ctx(request: Request, **kwargs):
 def inicio(request: Request):
     with conectar() as conexion:
         zonas = [z for z in listar_zonas_lima(conexion) if z["tipo"] == "DISTRITO"]
-    return templates.TemplateResponse("publico/inicio.html", _ctx(request, zonas=zonas))
+        listado = listar_interrupciones(conexion, limite=8)
+    return templates.TemplateResponse(
+        "publico/inicio.html",
+        _ctx(
+            request,
+            zonas=zonas,
+            recientes=listado["filas"],
+            total_cortes=listado["total"],
+        ),
+    )
 
 
 @router.get("/privacidad", response_class=HTMLResponse)

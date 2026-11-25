@@ -70,9 +70,11 @@ def _host_para_log(info: str) -> str:
     return "(local)"
 
 
-def conectar(row_factory=None, intentos: int = 8):
+def conectar(row_factory=None, intentos: int | None = None):
     ultimo: Exception | None = None
     info = conninfo()
+    if intentos is None:
+        intentos = 8 if config.EN_RENDER else 1
     for n in range(1, max(1, intentos) + 1):
         try:
             conexion = psycopg.connect(info)

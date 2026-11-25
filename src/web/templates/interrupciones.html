@@ -1,49 +1,51 @@
-{% extends "base.html" %}
-{% block titulo %}Interrupciones{% endblock %}
+{% extends "publico/base_publico.html" %}
+{% block titulo %}Cortes publicados{% endblock %}
 {% block contenido %}
-<h1 class="mb-2">Interrupciones</h1>
-<p class="text-muted">{{ total }} registro{{ 's' if total != 1 else '' }} en esta consulta. La fuente pública entrega como máximo 500 filas por respuesta; no es el histórico completo. Fechas según la fuente, no confirmadas en el predio.</p>
-<form class="row g-2 mb-3" method="get">
-  <div class="col-md-3">
-    <label class="form-label">Distrito</label>
-    <select class="form-select" name="distrito">
+<section class="pub-hero">
+  <p class="pub-kicker">Lote almacenado</p>
+  <h1>Cortes de agua publicados</h1>
+  <p>{{ total }} registro{{ 's' if total != 1 else '' }} en esta consulta. La fuente pública entrega como máximo 500 filas por respuesta; no es el histórico completo. Fechas según la fuente, no confirmadas en el predio.</p>
+</section>
+<form class="pub-form pub-filtros" method="get">
+  <div>
+    <label>Distrito</label>
+    <select name="distrito">
       <option value="">Todos</option>
       {% for d in distritos %}
       <option value="{{ d }}" {% if distrito == d %}selected{% endif %}>{{ d.title() }}</option>
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-2">
-    <label class="form-label">Tipo</label>
-    <select class="form-select" name="tipo">
+  <div>
+    <label>Tipo</label>
+    <select name="tipo">
       <option value="">Todos</option>
       <option value="PROGRAMADA" {% if tipo == 'PROGRAMADA' %}selected{% endif %}>Programada</option>
       <option value="IMPREVISTA" {% if tipo == 'IMPREVISTA' %}selected{% endif %}>Imprevista</option>
     </select>
   </div>
-  <div class="col-md-2">
-    <label class="form-label">Vigencia</label>
-    <select class="form-select" name="vigencia">
+  <div>
+    <label>Vigencia</label>
+    <select name="vigencia">
       <option value="">Todas (lote almacenado)</option>
       <option value="futura" {% if vigencia == 'futura' %}selected{% endif %}>Con fecha de detección futura</option>
       <option value="reciente" {% if vigencia == 'reciente' %}selected{% endif %}>Actualizadas o detectadas (7 días)</option>
     </select>
   </div>
-  <div class="col-md-2">
-    <label class="form-label">Sector</label>
-    <input class="form-control" name="sector" value="{{ sector }}" placeholder="p. ej. 212">
+  <div>
+    <label>Sector</label>
+    <input type="text" name="sector" value="{{ sector }}" placeholder="p. ej. 212">
   </div>
-  <div class="col-md-3">
-    <label class="form-label">Área o texto</label>
-    <input class="form-control" name="q" value="{{ q }}" placeholder="urbanización, A.H., calle">
+  <div>
+    <label>Área o texto</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="urbanización, A.H., calle">
   </div>
-  <div class="col-12 d-flex gap-2">
-    <button class="btn btn-primary" type="submit">Filtrar</button>
-    <a class="btn btn-outline-secondary" href="/interrupciones">Limpiar</a>
-  </div>
+  <button class="pub-btn" type="submit">Filtrar</button>
+  <a class="pub-btn pub-btn-sec" href="/interrupciones">Limpiar</a>
 </form>
+{% if filas %}
 <div class="table-responsive">
-<table class="table table-sm table-striped">
+<table class="pub-table">
   <thead>
     <tr>
       <th>Id</th><th>Distrito</th><th>Tipo</th>
@@ -62,20 +64,23 @@
       <td>{{ (fila.areas_afectadas or '—')[:90] }}</td>
       <td>{{ fila.sectores_detectados or fila.infor_web or '—' }}</td>
     </tr>
-  {% else %}
-    <tr><td colspan="7">No hay incidencias con esos filtros. Si el total almacenado es bajo, ejecute el pipeline contra la URL base de la fuente.</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+{% else %}
+<div class="pub-vacio">
+  <p>No hay incidencias con esos filtros. Si el total almacenado es 0, aún no hubo una captura exitosa: recargue en un par de minutos, use «Actualizar desde la fuente» en el panel operador, o ejecute el workflow Pipeline Render en GitHub.</p>
+</div>
+{% endif %}
 {% if paginas > 1 %}
-<nav class="d-flex gap-2 align-items-center">
+<nav class="pub-pagina">
   {% if pagina > 1 %}
-  <a class="btn btn-sm btn-outline-primary" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina - 1 }}">Anterior</a>
+  <a class="pub-btn pub-btn-sec" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina - 1 }}">Anterior</a>
   {% endif %}
   <span>Página {{ pagina }} de {{ paginas }}</span>
   {% if pagina < paginas %}
-  <a class="btn btn-sm btn-outline-primary" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina + 1 }}">Siguiente</a>
+  <a class="pub-btn pub-btn-sec" href="?distrito={{ distrito }}&tipo={{ tipo }}&q={{ q }}&sector={{ sector }}&vigencia={{ vigencia }}&pagina={{ pagina + 1 }}">Siguiente</a>
   {% endif %}
 </nav>
 {% endif %}

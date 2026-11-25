@@ -19,6 +19,7 @@ from src.config import (
     SESSION_SECRET,
     TRUST_PROXY,
 )
+from src.arranque import lanzar_ciclo, lanzar_si_vacio
 from src.db import aplicar_esquema, conectar
 from src.logging_config import configurar_logging
 from src.privacidad import enmascarar_correo
@@ -106,6 +107,7 @@ def _startup():
         conexion.commit()
     finally:
         conexion.close()
+    lanzar_si_vacio()
 
 
 def _ctx(request: Request, **kwargs):
@@ -235,6 +237,22 @@ def panel(request: Request):
     with conectar() as conexion:
         resumen = resumen_panel(conexion)
     return templates.TemplateResponse("panel.html", _ctx(request, **resumen))
+
+
+@app.post("/admin/ciclo")
+def admin_ciclo(request: Request, csrf: str = Form("")):
+    bloqueo = _exige_admin(request)
+    if bloqueo:
+        return bloqueo
+    validar_csrf(request, csrf)
+    lanzar_ciclo("MANUAL")
+    request.session["flash"] = (
+        "Se inició una actualización desde la fuente pública. "
+        "Espere uno o dos minutos y recargue esta página. "
+        "Si la fuente bloquea la IP de Render, el listado seguirá vacío hasta que "
+        "corra GitHub Actions (Pipeline Render) u otra red permitida."
+    )
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/interrupciones", response_class=HTMLResponse)

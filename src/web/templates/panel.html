@@ -4,6 +4,11 @@
 <h1 class="mb-3">Resumen operativo</h1>
 {% if aviso_smtp %}<div class="alert alert-danger">{{ aviso_smtp }}</div>{% endif %}
 <p class="text-muted">Cifras leídas de PostgreSQL. SIMULADA no es un correo leído. ACEPTADA_SMTP no confirma lectura del buzón.</p>
+<form method="post" action="/admin/ciclo" class="mb-4">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="btn btn-primary" type="submit">Actualizar desde la fuente ahora</button>
+  <span class="small text-muted ms-2">Consulta la API, guarda el lote y vacía el outbox. Tarda uno o dos minutos. No recargue en bucle.</span>
+</form>
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
     <div class="card kpi p-3"><div class="text-muted">Almacenadas (histórico local)</div><div class="fs-3">{{ total_interrupciones }}</div><div class="small">Lima: {{ lima }} · Prog. {{ programadas }} · Impr. {{ imprevistas }}</div></div>
