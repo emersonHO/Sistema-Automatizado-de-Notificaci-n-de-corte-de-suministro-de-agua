@@ -1,0 +1,52 @@
+{
+  "uid": "agua-estado",
+  "title": "Estado general",
+  "timezone": "utc",
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "API (up web)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "up{job=\"web\"}", "refId": "A" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "PostgreSQL (snapshot)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_postgres_up", "refId": "A" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Solicitudes pendientes",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_solicitudes{estado=\"PENDIENTE\"}", "refId": "A" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Notificaciones pendientes",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones{estado=\"PENDIENTE\"}", "refId": "A" }]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Pipeline en ERROR",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_pipeline_ejecuciones{estado=\"ERROR\"}", "refId": "A" }]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Scrape de dominio",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_scrape_ok", "refId": "A" }]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "HTTP por código",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (code) (rate(http_requests_total[5m]))", "refId": "A" }]
+    }
+  ]
+}

@@ -1,104 +1,234 @@
-import requests
+"""Cliente HTTP para la fuente pública de interrupciones.
+
+La API pertenece a un tercero (cortedeagua.net.pe), no es oficial de SEDAPAL.
+Por defecto se consulta la URL base sin parámetros: el lote observado es de
+hasta 500 registros. `dias` solo se envía si es un entero > 0.
+"""
+
+from __future__ import annotations
+
 import json
-from datetime import datetime
+import logging
+import time
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import requests
 
-URL = "https://cortedeagua.net.pe/api.php"
+from src.config import (
+    API_DIAS,
+    API_REINTENTOS,
+    API_TIMEOUT,
+    API_URL,
+    BASE_DIR,
+    CARPETA_RAW,
+    ZONA_SISTEMA,
+)
 
-DIAS = 14
+logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-CARPETA_RAW = BASE_DIR / "data" / "raw"
+URL = API_URL
 CARPETA_RAW.mkdir(parents=True, exist_ok=True)
 
-
-def obtener_datos(dias):
-    """Consulta la API y devuelve la respuesta JSON."""
-
-    respuesta = requests.get(
-        URL,
-        params={"dias": dias},
-        timeout=30
-    )
-
-    respuesta.raise_for_status()
-
-    datos = respuesta.json()
-
-    return datos
+CABECERAS = {
+    "Accept": "application/json, text/plain;q=0.9, */*;q=0.8",
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; AvisosAguaLima/1.0; "
+        "proyecto academico; +https://github.com/emersonHO/"
+        "Sistema-Automatizado-de-Notificaci-n-de-corte-de-suministro-de-agua)"
+    ),
+}
 
 
-def validar_respuesta(datos):
-    """Realiza validaciones básicas de la respuesta."""
+class CapturaIncompletaError(Exception):
+    """La fuente reportó más registros de los recibidos."""
 
+
+class RespuestaFuenteError(Exception):
+    """La respuesta no es utilizable."""
+
+
+def _ahora_local() -> datetime:
+    return datetime.now(ZoneInfo(ZONA_SISTEMA))
+
+
+def parametro_dias(dias: int | None = None) -> int | None:
+    if dias is not None:
+        return int(dias) if int(dias) > 0 else None
+    return API_DIAS
+
+
+def obtener_datos(dias: int | None = None, sesion: requests.Session | None = None) -> dict:
+    """Consulta la API. Sin `dias` (o 0) usa la URL base."""
+    elegido = parametro_dias(dias)
+    params = {"dias": elegido} if elegido else None
+    cliente = sesion or requests
+    ultimo_error: Exception | None = None
+
+    for intento in range(1, API_REINTENTOS + 1):
+        try:
+            respuesta = cliente.get(
+                API_URL,
+                params=params,
+                timeout=API_TIMEOUT,
+                headers=CABECERAS,
+            )
+            if respuesta.status_code == 403:
+                raise RespuestaFuenteError(
+                    "La fuente rechazó la consulta (HTTP 403). "
+                    "Algunos proveedores bloquean IPs automatizadas (Imunify360)."
+                )
+            respuesta.raise_for_status()
+            try:
+                datos = respuesta.json()
+            except ValueError as error:
+                raise RespuestaFuenteError("La respuesta no es un JSON válido.") from error
+            return datos
+        except (requests.RequestException, RespuestaFuenteError) as error:
+            ultimo_error = error
+            logger.warning(
+                "Fallo al consultar la fuente (intento %s/%s): %s",
+                intento,
+                API_REINTENTOS,
+                error,
+            )
+            if intento < API_REINTENTOS:
+                time.sleep(intento * 2)
+
+    raise RespuestaFuenteError(
+        f"No se pudo consultar la fuente después de {API_REINTENTOS} intentos: {ultimo_error}"
+    ) from ultimo_error
+
+
+def validar_respuesta(datos: object) -> dict:
     if not isinstance(datos, dict):
-        raise ValueError("La respuesta no tiene formato de objeto JSON.")
-
+        raise RespuestaFuenteError("La respuesta no tiene formato de objeto JSON.")
     if datos.get("ok") is not True:
-        raise ValueError("La API indicó que la consulta no fue exitosa.")
-
+        raise RespuestaFuenteError("La API indicó que la consulta no fue exitosa.")
     if "data" not in datos:
-        raise ValueError("La respuesta no contiene el campo 'data'.")
-
+        raise RespuestaFuenteError("La respuesta no contiene el campo 'data'.")
     if not isinstance(datos["data"], list):
-        raise ValueError("El campo 'data' no es una lista.")
+        raise RespuestaFuenteError("El campo 'data' no es una lista.")
+    return {"ok": True}
 
-    return True
+
+def analizar_completitud(datos: dict) -> dict:
+    registros = datos.get("data") or []
+    total_recibido = len(registros)
+    total_reportado = datos.get("total")
+    anomalias: list[str] = []
+    completa = True
+    tope = False
+
+    if total_reportado is not None:
+        try:
+            total_reportado_int = int(total_reportado)
+        except (TypeError, ValueError):
+            total_reportado_int = None
+            anomalias.append("El campo 'total' no es numérico.")
+            completa = False
+        else:
+            if total_recibido < total_reportado_int:
+                completa = False
+                anomalias.append(
+                    "La fuente reportó más registros de los recibidos; "
+                    "la captura no se considera completa."
+                )
+            elif total_recibido > total_reportado_int:
+                anomalias.append("Se recibieron más registros que el total reportado.")
+            if total_recibido == total_reportado_int == 500:
+                tope = True
+                anomalias.append(
+                    "La fuente entrega un tope de 500 registros; no hay paginación "
+                    "comprobada. No se afirma cobertura histórica total."
+                )
+    else:
+        total_reportado_int = None
+        anomalias.append("La respuesta no incluye el campo 'total'.")
+
+    return {
+        "total_recibido": total_recibido,
+        "total_reportado": total_reportado_int,
+        "captura_completa": completa,
+        "tope_500": tope,
+        "anomalias": anomalias,
+        "last_sync": datos.get("last_sync"),
+        "last_new_at": datos.get("last_new_at"),
+        "nota_last_sync": (
+            "last_sync no se usa para omitir la consulta: en observaciones "
+            "quedó desfasado respecto de fec_deteccion/actualizado_en."
+        ),
+    }
 
 
-def guardar_respuesta(datos):
-    fecha = datetime.now()
+def guardar_respuesta(datos: dict, dias: int | None = None, extra_meta: dict | None = None) -> Path:
+    CARPETA_RAW.mkdir(parents=True, exist_ok=True)
+    fecha = _ahora_local()
     nombre = f"cortes_{fecha:%Y%m%d_%H%M%S_%f}"
-
     ruta = CARPETA_RAW / f"{nombre}.json"
     ruta_meta = CARPETA_RAW / f"{nombre}.meta.json"
+    completitud = analizar_completitud(datos)
+    elegido = parametro_dias(dias)
 
-    with open(ruta, "w", encoding="utf-8") as f:
-        json.dump(datos, f, ensure_ascii=False, indent=2)
+    with open(ruta, "w", encoding="utf-8") as archivo:
+        json.dump(datos, archivo, ensure_ascii=False, indent=2)
 
     metadatos = {
         "fecha_captura_local": fecha.isoformat(),
-        "parametro_dias": DIAS,
-        "total_recibido": len(datos["data"])
+        "fecha_captura_utc": datetime.now(timezone.utc).isoformat(),
+        "zona_sistema": ZONA_SISTEMA,
+        "fuente_url": API_URL,
+        "nota_fuente": (
+            "Fuente pública de un tercero. No es una API oficial de SEDAPAL."
+        ),
+        "parametro_dias": elegido,
+        "consulta": API_URL if not elegido else f"{API_URL}?dias={elegido}",
+        "total_recibido": completitud["total_recibido"],
+        "total_reportado": completitud["total_reportado"],
+        "captura_completa": completitud["captura_completa"],
+        "tope_500": completitud.get("tope_500"),
+        "anomalias": completitud["anomalias"],
+        "last_sync": completitud["last_sync"],
+        "last_new_at": completitud["last_new_at"],
+        "ruta_archivo": str(ruta),
     }
+    if extra_meta:
+        metadatos.update(extra_meta)
 
-    with open(ruta_meta, "w", encoding="utf-8") as f:
-        json.dump(metadatos, f, indent=2)
+    with open(ruta_meta, "w", encoding="utf-8") as archivo:
+        json.dump(metadatos, archivo, ensure_ascii=False, indent=2)
+
+    if not completitud["captura_completa"]:
+        logger.warning("Captura incompleta: %s", "; ".join(completitud["anomalias"]))
 
     return ruta
 
 
-def main():
+def cargar_json(ruta: Path) -> dict:
+    with open(ruta, "r", encoding="utf-8") as archivo:
+        return json.load(archivo)
 
-    print("=" * 60)
-    print("RECOLECTOR DE INTERRUPCIONES DE AGUA")
-    print("=" * 60)
 
-    fecha_inicio = datetime.now()
-
-    print("Fecha de captura:", fecha_inicio)
-    print("Parámetro dias:", DIAS)
-    print()
-
-    datos = obtener_datos(DIAS)
-
+def recolectar(dias: int | None = None, sesion: requests.Session | None = None) -> tuple[dict, Path, dict]:
+    datos = obtener_datos(dias=dias, sesion=sesion)
     validar_respuesta(datos)
+    ruta = guardar_respuesta(datos, dias=dias)
+    meta_path = Path(str(ruta).removesuffix(".json") + ".meta.json")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    return datos, ruta, meta
 
-    registros = datos["data"]
 
-    print("Consulta realizada correctamente")
-    print("Estado:", datos.get("ok"))
-    print("Registros obtenidos:", len(registros))
-    print("Total reportado:", datos.get("total"))
-    print("Última sincronización:", datos.get("last_sync"))
-    print("Última incidencia:", datos.get("last_new_at"))
-
-    ruta = guardar_respuesta(datos)
-
-    print()
-    print("Datos almacenados en:")
-    print(ruta)
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    print("Fuente (tercero):", API_URL)
+    print("Parámetro dias (None = URL base):", parametro_dias())
+    datos, ruta, meta = recolectar()
+    print("Registros obtenidos:", meta.get("total_recibido"))
+    print("Total reportado:", meta.get("total_reportado"))
+    print("Captura completa:", meta.get("captura_completa"))
+    print("Datos:", ruta)
+    print("Proyecto:", BASE_DIR)
 
 
 if __name__ == "__main__":

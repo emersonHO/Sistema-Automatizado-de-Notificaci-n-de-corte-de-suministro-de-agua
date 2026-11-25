@@ -1,0 +1,97 @@
+{% extends "publico/base_publico.html" %}
+{% block contenido %}
+<section class="pub-hero">
+  <p class="pub-kicker">Información pública · no es un canal oficial</p>
+  <h1>Consulta cortes de agua y recibe avisos en tu correo</h1>
+  <p>Mostramos interrupciones publicadas por una fuente de un tercero. Si te suscribes, te avisamos cuando un reporte <strong>podría</strong> coincidir con tu distrito. No confirmamos predios ni reemplazamos a SEDAPAL u otras empresas prestadoras.</p>
+  <p class="pub-cta">
+    <a class="pub-btn" href="/interrupciones">Ver cortes publicados</a>
+    <a class="pub-btn pub-btn-sec" href="#suscribir">Quiero que me avisen</a>
+  </p>
+</section>
+
+<section class="pub-stats" aria-label="Resumen del lote almacenado">
+  <div class="pub-stat">
+    <span class="pub-stat-n">{{ total_cortes }}</span>
+    <span class="pub-stat-l">interrupciones guardadas</span>
+  </div>
+  <p class="pub-hint">La fuente entrega como máximo 500 registros por consulta. Lo que ves es el lote almacenado en este sistema, no el histórico oficial completo.</p>
+</section>
+
+<section id="cortes" class="pub-seccion">
+  <div class="pub-seccion-cab">
+    <h2>Últimos cortes en esta base</h2>
+    <a href="/interrupciones">Ver todos</a>
+  </div>
+  {% if recientes %}
+  <div class="pub-cards">
+    {% for fila in recientes %}
+    <a class="pub-corte" href="/interrupciones/{{ fila.id }}">
+      <span class="pub-chip {% if fila.tipo_incid and fila.tipo_incid|upper == 'IMPREVISTA' %}pub-chip-imp{% endif %}">{{ fila.tipo_incid or 'Sin tipo' }}</span>
+      <strong>{{ fila.municipalidad or 'Distrito no informado' }}</strong>
+      <span class="pub-corte-meta">Detección (fuente): {{ fila.fec_deteccion or 'no informada' }}</span>
+      <span class="pub-corte-areas">{{ (fila.areas_afectadas or 'Áreas no detalladas')[:140] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="pub-vacio">
+    <p>Aún no hay cortes almacenados. En Render la primera captura sale sola al arrancar (tarda 1–2 minutos) o con el botón «Actualizar» del panel operador. También corre GitHub Actions cada 15 minutos si configuró los secretos.</p>
+    <p>Si la fuente bloquea la IP, el listado permanecerá vacío hasta una captura exitosa.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="pub-grid" id="como">
+  <article class="pub-card"><h2>1. Mira el listado</h2><p>Filtra por distrito, tipo o texto. Los datos son los que publicó la fuente, sin geocodificar tu casa.</p></article>
+  <article class="pub-card"><h2>2. Elige tu distrito</h2><p>Solo Lima Metropolitana. El Callao puede aparecer en la fuente, pero este servicio no hace matching allí.</p></article>
+  <article class="pub-card"><h2>3. Confirma el correo</h2><p>Hasta que pulses el enlace, no activamos avisos. El enlace caduca. Revisa también no deseados.</p></article>
+</section>
+
+<section class="pub-form" id="suscribir">
+  <h2>Recibir avisos por correo</h2>
+  <p class="pub-hint">Te enviaremos un mensaje para confirmar. Una coincidencia de distrito indica <strong>posible</strong> afectación, no un corte en tu domicilio.</p>
+  <form method="post" action="/suscribir" id="form-suscribir">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="pub-hp" aria-hidden="true"><label>Sitio web<input name="website" tabindex="-1" autocomplete="off"></label></p>
+    <label for="correo">Correo electrónico</label>
+    <input id="correo" name="correo" type="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="tu@correo.com">
+    <label for="distrito">Distrito de Lima Metropolitana</label>
+    <select id="distrito" name="distrito" required>
+      <option value="">Selecciona tu distrito</option>
+      {% for z in zonas %}
+      <option value="{{ z.id }}">{{ z.nombre }}</option>
+      {% endfor %}
+    </select>
+    <fieldset class="pub-fieldset">
+      <legend>Qué quieres que te avisemos</legend>
+      <label class="pub-check"><input type="checkbox" name="alerta_nueva" value="on" checked> Interrupción nueva</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_modificada" value="on" checked> Actualización relevante</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_cancelacion" value="on"> Cancelación o cierre informado por la fuente</label>
+      <label class="pub-check"><input type="checkbox" name="resumen_diario" value="on"> Resumen diario (opcional)</label>
+    </fieldset>
+    <label class="pub-check">
+      <input type="checkbox" name="consentimiento" value="on" required>
+      Acepto el <a href="/privacidad">aviso de privacidad</a> y recibir avisos informativos en este correo.
+    </label>
+    <button class="pub-btn" type="submit" id="btn-suscribir">Registrarme y enviar confirmación</button>
+  </form>
+  <h3>¿No llegó el correo?</h3>
+  <p class="pub-hint">Con Resend de prueba, el envío fiable es hacia el mismo correo con el que creaste la cuenta Resend. Revisa spam. Espera 15 minutos antes de reenviar.</p>
+  <form method="post" action="/reenviar">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="pub-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></p>
+    <label for="correo2">Mismo correo</label>
+    <input id="correo2" name="correo" type="email" required>
+    <button class="pub-btn pub-btn-sec" type="submit">Reenviar confirmación</button>
+  </form>
+</section>
+
+<section id="faq">
+  <h2>Preguntas frecuentes</h2>
+  <details class="pub-faq"><summary>¿Esto es SEDAPAL?</summary><p>No. Consultamos una fuente pública de un tercero. No es un canal oficial.</p></details>
+  <details class="pub-faq"><summary>¿Me garantiza que me quedaré sin agua?</summary><p>No. El matching es territorial (distrito o área si está informada). No identifica domicilios.</p></details>
+  <details class="pub-faq"><summary>¿Por qué no veo cortes?</summary><p>La base empieza vacía. Hay que completar al menos una captura (arranque del servicio, botón del operador o GitHub Actions). Si la API responde 403, esa red está bloqueada.</p></details>
+  <details class="pub-faq"><summary>¿Cómo cancelo?</summary><p>Cada aviso incluye un enlace de cancelación. No hace falta contraseña.</p></details>
+</section>
+{% endblock %}

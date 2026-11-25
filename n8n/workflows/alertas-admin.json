@@ -1,0 +1,44 @@
+{
+  "name": "Alertas administrativas",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Lima" },
+  "notes": "Consulta observabilidad y pide a FastAPI que envíe alerta si hay ERROR. Credencial FastAPI interno. Sin secretos.",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } },
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "name": "Cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://web:8000/internal/v1/alertas-admin",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 15000 }
+      },
+      "id": "d1000000-0000-4000-8000-000000000002",
+      "name": "Evaluar alertas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "onError": "continueErrorOutput",
+      "credentials": { "httpHeaderAuth": { "id": "fastapi-interno", "name": "FastAPI interno" } }
+    },
+    {
+      "parameters": { "errorMessage": "No se pudo consultar alertas administrativas." },
+      "id": "d1000000-0000-4000-8000-000000000003",
+      "name": "Error HTTP",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [480, 160]
+    }
+  ],
+  "connections": {
+    "Cada 15 minutos": { "main": [[{ "node": "Evaluar alertas", "type": "main", "index": 0 }]] },
+    "Evaluar alertas": { "main": [[], [{ "node": "Error HTTP", "type": "main", "index": 0 }]] }
+  }
+}

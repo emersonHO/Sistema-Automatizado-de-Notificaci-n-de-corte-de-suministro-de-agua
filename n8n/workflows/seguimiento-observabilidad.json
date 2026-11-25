@@ -1,0 +1,123 @@
+{
+  "name": "Seguimiento observabilidad y notificaciones",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Lima"
+  },
+  "notes": "Consulta Bearer a FastAPI. No sustituye Grafana. Credencial Header Auth «FastAPI interno». Maneja 401/503 sin tumbar n8n.",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "name": "Inicio manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://web:8000/internal/v1/observabilidad",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 15000 }
+      },
+      "id": "c1000000-0000-4000-8000-000000000002",
+      "name": "Snapshot observabilidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fastapi-interno",
+          "name": "FastAPI interno"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Fallo al consultar observabilidad (auth, red o FastAPI). Revise la credencial «FastAPI interno» y GET /salud/listo."
+      },
+      "id": "c1000000-0000-4000-8000-000000000004",
+      "name": "Error observabilidad",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [480, 180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://web:8000/internal/v1/notificaciones?limite=20",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 15000 }
+      },
+      "id": "c1000000-0000-4000-8000-000000000003",
+      "name": "Listar notificaciones",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 0],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fastapi-interno",
+          "name": "FastAPI interno"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Fallo al listar notificaciones. Código HTTP de FastAPI no exitoso (típicamente 401 NO_AUTORIZADO o 503)."
+      },
+      "id": "c1000000-0000-4000-8000-000000000005",
+      "name": "Error notificaciones",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [720, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "value": "={{$json.ok === true}}",
+              "type": "boolean"
+            },
+            {
+              "id": "n",
+              "name": "notificaciones",
+              "value": "={{($json.notificaciones || []).length}}",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "c1000000-0000-4000-8000-000000000006",
+      "name": "Resumen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 0]
+    }
+  ],
+  "connections": {
+    "Inicio manual": {
+      "main": [[{ "node": "Snapshot observabilidad", "type": "main", "index": 0 }]]
+    },
+    "Snapshot observabilidad": {
+      "main": [
+        [{ "node": "Listar notificaciones", "type": "main", "index": 0 }],
+        [{ "node": "Error observabilidad", "type": "main", "index": 0 }]
+      ]
+    },
+    "Listar notificaciones": {
+      "main": [
+        [{ "node": "Resumen", "type": "main", "index": 0 }],
+        [{ "node": "Error notificaciones", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

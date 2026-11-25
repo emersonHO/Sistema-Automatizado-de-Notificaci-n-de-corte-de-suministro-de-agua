@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Acceso administrativo{% endblock %}
+{% block contenido %}
+<h1>Acceso administrativo</h1>
+<p>El panel operativo, las notificaciones y las ejecuciones requieren sesión. Las suscripciones públicas no usan esta cuenta.</p>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="/admin/login" class="card p-3" style="max-width:24rem">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="siguiente" value="{{ siguiente }}">
+  <div class="mb-3">
+    <label class="form-label">Usuario</label>
+    <input class="form-control" name="usuario" required autocomplete="username">
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Contraseña</label>
+    <input class="form-control" type="password" name="password" required autocomplete="current-password">
+  </div>
+  <button class="btn btn-primary" type="submit">Entrar</button>
+</form>
+{% endblock %}

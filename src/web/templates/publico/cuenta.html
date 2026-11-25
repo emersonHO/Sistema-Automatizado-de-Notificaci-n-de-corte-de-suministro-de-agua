@@ -1,0 +1,29 @@
+{% extends "publico/base_publico.html" %}
+{% block titulo %}Preferencias{% endblock %}
+{% block contenido %}
+<div class="pub-form">
+  <h1>Tus preferencias</h1>
+  <p>Cuenta {{ correo }}. Pausar deja de enviar avisos sin borrar el historial. Cancelar detiene todos los envíos futuros.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="pub-check"><input type="checkbox" name="pausado" {% if pausado %}checked{% endif %}> Pausar todos los avisos</label>
+    <table class="pub-table">
+      <thead><tr><th>Zona</th><th>Nueva</th><th>Cambio</th><th>Cancelación</th><th>Resumen</th><th>Pausar zona</th></tr></thead>
+      <tbody>
+      {% for p in prefs %}
+        <tr>
+          <td>{{ p.nombre }} ({{ p.tipo }})</td>
+          <td><input type="checkbox" name="nueva_{{ p.id }}" {% if p.alerta_nueva %}checked{% endif %}></td>
+          <td><input type="checkbox" name="mod_{{ p.id }}" {% if p.alerta_modificada %}checked{% endif %}></td>
+          <td><input type="checkbox" name="can_{{ p.id }}" {% if p.alerta_cancelacion %}checked{% endif %}></td>
+          <td><input type="checkbox" name="res_{{ p.id }}" {% if p.resumen_diario %}checked{% endif %}></td>
+          <td><input type="checkbox" name="pau_{{ p.id }}" {% if p.pausada %}checked{% endif %}></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <button class="pub-btn" type="submit">Guardar</button>
+  </form>
+  <p><a href="/baja/{{ baja_token }}">Cancelar definitivamente la suscripción</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,220 @@
+# Producción: Caddy público (80/443). El resto queda en red interna.
+# PostgreSQL, n8n, Prometheus y Grafana NO se publican.
+# No usar: docker compose down -v
+# Arranque: docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+
+name: notificacion-agua-prod
+
+networks:
+  interna:
+    driver: bridge
+
+volumes:
+  pgdata:
+  capturas:
+  n8n_data:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:
+  backups:
+
+services:
+  db:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-notificaciones_agua}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [interna]
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: true
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      WEB_HOST: 0.0.0.0
+      LOG_FORMAT: json
+      SESSION_HTTPS: "true"
+      INTERNAL_PERMITIR_FIXTURE: "false"
+      MODO_ENVIO: ${MODO_ENVIO:-real}
+    volumes:
+      - capturas:/app/data
+    networks: [interna]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/salud/listo', timeout=4)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    security_opt:
+      - no-new-privileges:true
+
+  pipeline-worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: true
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      LOG_FORMAT: json
+      INTERNAL_PERMITIR_FIXTURE: "false"
+    volumes:
+      - capturas:/app/data
+    networks: [interna]
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.worker_pipeline"]
+
+  notification-worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: true
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      LOG_FORMAT: json
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      MODO_ENVIO: ${MODO_ENVIO:-real}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Avisos de agua Lima}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TIMEOUT: ${SMTP_TIMEOUT:-20}
+    volumes:
+      - capturas:/app/data
+    networks: [interna]
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.worker_notificaciones"]
+
+  n8n:
+    image: n8nio/n8n:2.48.4
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      TZ: America/Lima
+      GENERIC_TIMEZONE: America/Lima
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: 127.0.0.1
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks: [interna]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      web:
+        condition: service_healthy
+    networks: [interna]
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks: [interna]
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      DOMINIO: ${DOMINIO}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [interna]
+
+  backup:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-notificaciones_agua}
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - backups:/backups
+    networks: [interna]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "while true; do /bin/sh /backup.sh || true; sleep 86400; done"

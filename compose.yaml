@@ -1,0 +1,281 @@
+# Fases 1-5: db, web, workers, n8n, Mailpit, Prometheus, Grafana.
+# Perfil pipeline = CLI de laboratorio.
+# PostgreSQL sin puerto en el host. No usar: docker compose down -v.
+
+name: notificacion-agua
+
+networks:
+  interna:
+    driver: bridge
+
+volumes:
+  pgdata:
+  capturas:
+  n8n_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+  db:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agua}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      POSTGRES_DB: ${POSTGRES_DB:-notificaciones_agua}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - interna
+    # Sin "ports": el motor no queda expuesto en el host.
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      WEB_HOST: 0.0.0.0
+      LOG_FORMAT: json
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      INTERNAL_PERMITIR_FIXTURE: ${INTERNAL_PERMITIR_FIXTURE:-false}
+    volumes:
+      - capturas:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/salud/listo', timeout=4)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+
+  pipeline:
+    build: .
+    profiles: ["pipeline"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      LOG_FORMAT: json
+    volumes:
+      - capturas:/app/data
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.pipeline"]
+
+  pipeline-worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      LOG_FORMAT: json
+      INTERNAL_PERMITIR_FIXTURE: ${INTERNAL_PERMITIR_FIXTURE:-false}
+      WORKER_POLL_S: ${WORKER_POLL_S:-2}
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      MODO_ENVIO: ${MODO_ENVIO:-simulacion}
+    volumes:
+      - capturas:/app/data
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.worker_pipeline"]
+
+  notification-worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-notificaciones_agua}
+      DB_USER: ${POSTGRES_USER:-agua}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cambiar_password_docker}
+      LOG_FORMAT: json
+      NOTIF_POLL_S: ${NOTIF_POLL_S:-2}
+      NOTIF_MAX_INTENTOS: ${NOTIF_MAX_INTENTOS:-5}
+      NOTIF_LOTE: ${NOTIF_LOTE:-20}
+      NOTIF_BACKOFF_BASE_S: ${NOTIF_BACKOFF_BASE_S:-5}
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      MODO_ENVIO: ${MODO_ENVIO:-simulacion}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_FROM: ${SMTP_FROM:-notificaciones@localhost}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Avisos de agua Lima}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TIMEOUT: ${SMTP_TIMEOUT:-20}
+    volumes:
+      - capturas:/app/data
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+    command: ["python", "-m", "src.worker_notificaciones"]
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  n8n:
+    image: n8nio/n8n:2.48.4
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      TZ: America/Lima
+      GENERIC_TIMEZONE: America/Lima
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-cambiar_cifrado_n8n}
+      N8N_HOST: 127.0.0.1
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      WEBHOOK_URL: http://127.0.0.1:5678/
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --spider -q http://127.0.0.1:5678/healthz || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - interna
+
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - interna
+    # SMTP interno :1025; UI :8025 solo en localhost. No reenvía a Internet.
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - interna
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-cambiar_grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://127.0.0.1:3000
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - interna
+
+  # Ciudadanos: Caddy filtra rutas y cloudflared abre un Quick Tunnel (trycloudflare.com).
+  # No publica n8n, Grafana, Prometheus, PostgreSQL ni /admin. Perfil: publico
+  caddy-publico:
+    image: caddy:2.8.4-alpine
+    profiles: ["publico"]
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./deploy/Caddyfile.publico:/etc/caddy/Caddyfile:ro
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+
+  tunel:
+    image: cloudflare/cloudflared:2024.11.1
+    profiles: ["publico"]
+    restart: unless-stopped
+    depends_on:
+      - caddy-publico
+    command: ["tunnel", "--no-autoupdate", "--url", "http://caddy-publico:80"]
+    networks:
+      - interna
+    security_opt:
+      - no-new-privileges:true
+

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titulo %}Auditoría{% endblock %}
+{% block contenido %}
+<h1>Historial y auditoría</h1>
+<p class="text-muted">Versiones de interrupciones persistidas. No se borra el pasado.</p>
+<div class="table-responsive">
+<table class="table table-sm table-striped">
+  <thead><tr><th>Fecha</th><th>Incidencia</th><th>Distrito</th><th>Evento</th><th>Relevante</th><th>Versiones</th></tr></thead>
+  <tbody>
+  {% for f in filas %}
+    <tr>
+      <td>{{ f.fecha_registro }}</td>
+      <td><a href="/interrupciones/{{ f.interrupcion_id }}">{{ f.cod_incidencia or f.interrupcion_id }}</a></td>
+      <td>{{ f.municipalidad }}</td>
+      <td>{{ f.tipo_evento }}</td>
+      <td>{{ f.cambio_relevante }}</td>
+      <td>{{ f.version_origen }} / {{ f.version_relevante }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="text-muted">Sin historial.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titulo %}Observabilidad{% endblock %}
+{% block contenido %}
+<h1>Observabilidad y métricas</h1>
+<p class="text-muted">Cifras calculadas desde PostgreSQL en UTC. <strong>SIMULADA</strong> no es un correo enviado. <strong>COMPLETADO_INCOMPLETO</strong> no se cuenta como ERROR.</p>
+<p class="small">Generado: {{ obs.generado_utc or '—' }} · Zona de timestamps: {{ obs.zona_timestamps or 'UTC' }}</p>
+
+<h2 class="h5 mt-4">Pipeline</h2>
+<div class="row g-3">
+  {% set p = obs.pipeline or {} %}
+  <div class="col-md-3"><div class="card p-3"><div class="text-muted">Total</div><div class="fs-3">{{ p.total if p.total is not none else 0 }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div class="text-muted">Completadas</div><div class="fs-3">{{ p.completadas if p.completadas is not none else 0 }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div class="text-muted">Incompletas</div><div class="fs-3">{{ p.incompletas if p.incompletas is not none else 0 }}</div></div></div>
+  <div class="col-md-3"><div class="card p-3"><div class="text-muted">ERROR</div><div class="fs-3">{{ p.fallidas if p.fallidas is not none else 0 }}</div></div></div>
+</div>
+<table class="table table-sm mt-3">
+  <tr><th>Duración promedio / mediana / p95 (s)</th>
+      <td>{{ p.duracion_promedio_s }} / {{ p.duracion_mediana_s }} / {{ p.duracion_p95_s }}</td></tr>
+  <tr><th>Tasa sin error (completo + incompleto) / estricto</th>
+      <td>{{ p.tasa_sin_error }} / {{ p.tasa_completo_estricto }}</td></tr>
+  <tr><th>Descarga / normalización / persistencia / correspondencia / outbox (ms promedio)</th>
+      <td>{{ p.promedio_descarga_ms }} / {{ p.promedio_normalizacion_ms }} / {{ p.promedio_persistencia_ms }} / {{ p.promedio_correspondencia_ms }} / {{ p.promedio_notificaciones_ms }}</td></tr>
+  <tr><th>Última ejecución</th>
+      <td>{% if p.ultima %}#{{ p.ultima.id }} {{ p.ultima.estado }} {{ p.ultima.fecha_inicio }} → {{ p.ultima.fecha_fin }}{% else %}Sin ejecuciones{% endif %}</td></tr>
+</table>
+
+<h2 class="h5 mt-4">Cola de solicitudes (Fase 2)</h2>
+{% set s = obs.solicitudes or {} %}
+<div class="row g-3">
+  <div class="col-md-3"><div class="card p-3">Pendientes: {{ s.pendientes or 0 }}</div></div>
+  <div class="col-md-3"><div class="card p-3">En proceso: {{ s.en_proceso or 0 }}</div></div>
+  <div class="col-md-3"><div class="card p-3">ERROR: {{ s.error or 0 }}</div></div>
+  <div class="col-md-3"><div class="card p-3">Recuperación: {{ s.recuperacion or 0 }}</div></div>
+</div>
+<p class="mt-2">Espera en cola promedio / mediana (s): {{ s.espera_cola_promedio_s }} / {{ s.espera_cola_mediana_s }}</p>
+
+<h2 class="h5 mt-4">Notificaciones (simulación)</h2>
+{% set n = obs.notificaciones or {} %}
+<div class="row g-3">
+  <div class="col-md-2"><div class="card p-3">Total {{ n.total or 0 }}</div></div>
+  <div class="col-md-2"><div class="card p-3">Pendientes {{ n.pendientes or 0 }}</div></div>
+  <div class="col-md-2"><div class="card p-3">Simuladas {{ n.simuladas or 0 }}</div></div>
+  <div class="col-md-2"><div class="card p-3">Reintentando {{ n.reintentando or 0 }}</div></div>
+  <div class="col-md-2"><div class="card p-3">Fallidas {{ n.fallidas or 0 }}</div></div>
+  <div class="col-md-2"><div class="card p-3">Recuperadas {{ n.recuperaciones or 0 }}</div></div>
+</div>
+<p class="mt-2">Tasa de simulación exitosa: {{ n.tasa_simulacion_exitosa }} · Reintentos: {{ n.reintentos or 0 }} · Espera cola (s): {{ n.espera_cola_promedio_s }} · Procesamiento (s): {{ n.procesamiento_promedio_s }}</p>
+<p class="small">Intentos por resultado: {{ n.intentos_por_resultado }}</p>
+
+<h2 class="h5 mt-4">Correspondencia y cambios (casos etiquetados, no producción)</h2>
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h3 class="h6">Correspondencia territorial</h3>
+      <p>Precisión: {{ correspondencia.precision }} · Recall: {{ correspondencia.recall }}</p>
+      <p>VP {{ correspondencia.vp }} / FP {{ correspondencia.fp }} / FN {{ correspondencia.fn }} / VN {{ correspondencia.vn }} · Casos: {{ correspondencia.casos }}</p>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h3 class="h6">Detección de cambios</h3>
+      <p>Exactitud origen: {{ cambios.exactitud_origen }}</p>
+      <p>Exactitud relevante: {{ cambios.exactitud_relevante }}</p>
+      <p>Casos: {{ cambios.casos }}</p>
+    </div>
+  </div>
+</div>
+<p class="mt-4 small">CPU y memoria de contenedores: <code>.\scripts\diagnostico.ps1</code> (docker stats). El RSS de este proceso web, si está en Linux: {{ obs.proceso.rss_kb if obs.proceso else '—' }} KB.</p>
+{% endblock %}

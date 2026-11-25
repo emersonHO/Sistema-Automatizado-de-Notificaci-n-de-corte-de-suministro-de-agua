@@ -1,0 +1,54 @@
+# Ejecuta el pipeline y el outbox existentes contra PostgreSQL de Render.
+# No es un segundo pipeline. Horario GitHub: UTC (Lima = UTC-5).
+name: Pipeline Render
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-render-produccion
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ciclo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SSLMODE: require
+      API_URL: https://cortedeagua.net.pe/api.php
+      BASE_URL: ${{ secrets.BASE_URL }}
+      CORREO_PROVEEDOR: resend
+      MODO_ENVIO: real
+      OPERACION_PUBLICA: "true"
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      SMTP_FROM_NAME: Avisos de agua Lima
+      INTERNAL_PERMITIR_FIXTURE: "false"
+      LOG_FORMAT: json
+      IDEMPOTENCY_KEY: gha-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Comprobar secretos
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Falta el secreto DATABASE_URL (URL externa de Render Postgres)."
+            exit 1
+          fi
+          if [ -z "$BASE_URL" ]; then
+            echo "Falta el secreto BASE_URL (https://servicio.onrender.com)."
+            exit 1
+          fi
+          echo "Secretos presentes (valores no se imprimen)."
+      - name: Dependencias
+        run: pip install -r requirements.txt
+      - name: Ciclo pipeline + outbox
+        run: python -m src.ciclo_produccion
