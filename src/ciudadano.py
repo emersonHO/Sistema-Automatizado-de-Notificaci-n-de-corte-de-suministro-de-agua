@@ -76,7 +76,9 @@ def registrar_publico(
     except EmailNotValidError as error:
         raise ValueError("Correo electrónico no válido.") from error
     if not zonas:
-        raise ValueError("Selecciona al menos un distrito de Lima Metropolitana.")
+        raise ValueError(
+            "Indica al menos un sector, un área de interés, o marca «avisos de todo el distrito»."
+        )
 
     with conexion.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
@@ -153,6 +155,15 @@ def registrar_publico(
             )
             creadas.append(cursor.fetchone()["id"])
 
+        if resumen_diario:
+            cursor.execute(
+                """
+                UPDATE usuarios
+                SET resumen_frecuencia = 'diario', informe_sin_cortes = TRUE
+                WHERE id = %s
+                """,
+                (usuario_id,),
+            )
         cursor.execute(
             "SELECT correo_confirmado FROM usuarios WHERE id = %s",
             (usuario_id,),
@@ -252,7 +263,9 @@ def usuario_por_token_gestion(token: str, conexion) -> dict | None:
     with conexion.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            SELECT id, correo, correo_confirmado, activo, pausado
+            SELECT id, correo, correo_confirmado, activo, pausado,
+                   aviso_inmediato, ventana_inicio, ventana_fin,
+                   resumen_frecuencia, informe_sin_cortes
             FROM usuarios WHERE id = %s AND activo
             """,
             (uid,),
@@ -278,11 +291,11 @@ def listar_prefs(usuario_id: int, conexion) -> list[dict]:
             """
             SELECT s.id, s.activa, s.confirmada, s.pausada, s.alerta_nueva,
                    s.alerta_modificada, s.alerta_cancelacion, s.resumen_diario,
-                   z.tipo, z.nombre
+                   z.tipo, z.nombre, z.distrito_padre
             FROM suscripciones s
             JOIN zonas z ON z.id = s.zona_id
-            WHERE s.usuario_id = %s
-            ORDER BY z.nombre
+            WHERE s.usuario_id = %s AND s.baja_en IS NULL
+            ORDER BY z.tipo, z.nombre
             """,
             (usuario_id,),
         )
@@ -295,6 +308,35 @@ def actualizar_prefs(usuario_id: int, cambios: dict, conexion) -> None:
             cursor.execute(
                 "UPDATE usuarios SET pausado = %s WHERE id = %s",
                 (bool(cambios["pausado"]), usuario_id),
+            )
+        if any(
+            k in cambios
+            for k in (
+                "aviso_inmediato",
+                "ventana_inicio",
+                "ventana_fin",
+                "resumen_frecuencia",
+                "informe_sin_cortes",
+            )
+        ):
+            cursor.execute(
+                """
+                UPDATE usuarios
+                SET aviso_inmediato = COALESCE(%s, aviso_inmediato),
+                    ventana_inicio = %s,
+                    ventana_fin = %s,
+                    resumen_frecuencia = COALESCE(%s, resumen_frecuencia),
+                    informe_sin_cortes = COALESCE(%s, informe_sin_cortes)
+                WHERE id = %s
+                """,
+                (
+                    cambios.get("aviso_inmediato"),
+                    cambios.get("ventana_inicio"),
+                    cambios.get("ventana_fin"),
+                    cambios.get("resumen_frecuencia"),
+                    cambios.get("informe_sin_cortes"),
+                    usuario_id,
+                ),
             )
         for sid, prefs in (cambios.get("suscripciones") or {}).items():
             cursor.execute(
@@ -371,3 +413,115 @@ def enviar_correo_alta(resultado: dict) -> dict:
             extra={"evento": "correo_transaccional_fallo"},
         )
         return {**resultado, "correo_enviado": False, "smtp": False}
+
+
+def construir_zonas_formulario(
+    conexion,
+    *,
+    distrito_id: str,
+    todo_distrito: bool,
+    sectores: str,
+    areas: str,
+) -> list[dict]:
+    zonas: list[dict] = []
+    padre = None
+    if str(distrito_id).isdigit():
+        with conexion.cursor(row_factory=dict_row) as cursor:
+            cursor.execute(
+                "SELECT id, nombre_normalizado FROM zonas WHERE id = %s AND tipo = 'DISTRITO'",
+                (int(distrito_id),),
+            )
+            fila = cursor.fetchone()
+        if not fila:
+            raise ValueError("Distrito no válido.")
+        padre = fila["nombre_normalizado"]
+        if todo_distrito:
+            zonas.append({"zona_id": int(fila["id"])})
+    for crudo in (sectores or "").replace(";", ",").split(","):
+        pieza = crudo.strip()
+        if not pieza:
+            continue
+        zonas.append({"tipo": "SECTOR", "nombre": pieza, "distrito_padre": padre})
+    for linea in (areas or "").splitlines():
+        pieza = linea.strip()
+        if not pieza:
+            continue
+        zonas.append({"tipo": "AREA", "nombre": pieza, "distrito_padre": padre})
+    return zonas
+
+
+def quitar_suscripcion(usuario_id: int, suscripcion_id: int, conexion) -> None:
+    with conexion.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE suscripciones
+            SET activa = FALSE, baja_en = NOW(), pausada = TRUE
+            WHERE id = %s AND usuario_id = %s
+            """,
+            (suscripcion_id, usuario_id),
+        )
+
+
+def cortes_de_interes(usuario_id: int, conexion, limite: int = 80) -> dict:
+    from src.correspondencia import coincidencia_notificable, evaluar_par
+    from src.suscripciones import suscripciones_activas
+
+    prefs = [s for s in suscripciones_activas(conexion) if s["usuario_id"] == usuario_id]
+    with conexion.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            """
+            SELECT id, municipalidad, areas_afectadas, infor_web, tipo_incid, estado,
+                   causa, fec_deteccion, fec_estimada, cod_incidencia, datos,
+                   sectores_detectados
+            FROM interrupciones
+            WHERE ambito_lima IS TRUE
+            ORDER BY COALESCE(actualizado_en_fuente, fec_deteccion) DESC NULLS LAST
+            LIMIT 800
+            """
+        )
+        filas = list(cursor.fetchall())
+    coincidentes = []
+    for fila in filas:
+        registro = dict(fila.get("datos") or {})
+        registro.update({k: fila[k] for k in fila if k != "datos"})
+        for sus in prefs:
+            zona = {
+                "id": sus["zona_id"],
+                "tipo": sus["tipo"],
+                "nombre": sus["nombre"],
+                "nombre_normalizado": sus["nombre_normalizado"],
+                "distrito_padre": sus["distrito_padre"],
+                "ambito_lima": sus["ambito_lima"],
+            }
+            resultado = evaluar_par(registro, zona)
+            if coincidencia_notificable(resultado):
+                coincidentes.append({**registro, "coincidencia": resultado, "zona": sus["nombre"]})
+                break
+        if len(coincidentes) >= limite:
+            break
+    return {
+        "zonas": prefs,
+        "filas": coincidentes,
+        "total": len(coincidentes),
+        "sin_cortes": len(coincidentes) == 0,
+    }
+
+
+def pedir_acceso(correo: str, conexion) -> dict:
+    correo = (correo or "").strip().lower()
+    with conexion.cursor(row_factory=dict_row) as cursor:
+        cursor.execute(
+            "SELECT id, correo, correo_confirmado FROM usuarios WHERE lower(correo) = %s AND activo",
+            (correo,),
+        )
+        fila = cursor.fetchone()
+    if not fila or not fila["correo_confirmado"]:
+        return {"ok": True, "mensaje": MENSAJE_GENERICO}
+    return {
+        "ok": True,
+        "mensaje": MENSAJE_GENERICO,
+        "correo": fila["correo"],
+        "usuario_id": fila["id"],
+        "tipo_correo": "gestion",
+        "token": None,
+    }

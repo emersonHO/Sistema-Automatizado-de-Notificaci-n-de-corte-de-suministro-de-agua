@@ -170,7 +170,17 @@ El horario del cron es **UTC** (cada 15 min). Lima es UTC−5.
 
 ---
 
-## Parte D — Después de que el web esté Live
+## Parte D — Zonas, informes y cuenta (después del deploy)
+
+1. Suba este código y deje que Render despliegue.
+2. En la web pública, suscríbase con **distrito + sector y/o área**. No marque «todo el distrito» si no quiere avisos de todo el distrito.
+3. Confirme el correo. En «Ya tengo cuenta» pida un enlace para editar zonas, horarios e informes.
+4. Abra **Informe de mi zona** cuando quiera un reporte de coincidencias (o de «sin cortes» en el lote actual).
+5. GitHub Actions: además de **Pipeline Render** (cada 15 min, avisos inmediatos), active **Informe zonas Render** (diario 07:00 Lima). Usa los mismos secretos.
+6. Grafana y Prometheus **no van en Render Free**. En su PC: `docker compose --env-file .env.docker up -d` y abra Grafana en :3000 (dashboards «Avisos de agua»).
+7. n8n **solo local** (o n8n Cloud si usted lo contrata). En Render el cron es GitHub. No active `pipeline-programado.json` contra la misma base que Actions.
+
+## Parte E — Después de que el web esté Live
 
 Suba este código a GitHub y deje que Render vuelva a desplegar.
 

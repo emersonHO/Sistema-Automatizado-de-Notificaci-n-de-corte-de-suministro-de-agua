@@ -138,10 +138,17 @@ def baja_confirmada() -> tuple[str, str, str]:
 
 
 def resumen(zonas: list[str], filas: list[dict], gestion: str, baja: str) -> tuple[str, str, str]:
-    asunto = "Resumen diario de interrupciones en tus zonas (opcional)"
+    asunto = "Informe de interrupciones en tus zonas de interés"
     if not filas:
-        texto = "No hay interrupciones vigentes registradas hoy para tus zonas."
-        html = envoltorio(asunto, f"<p>{texto}</p>", pie(gestion, baja))
+        texto = (
+            "En el lote almacenado de hoy no hay interrupciones que coincidan con tus "
+            "sectores o áreas de interés. Eso no garantiza que no exista un corte no publicado."
+        )
+        html = envoltorio(
+            "Sin coincidencias hoy",
+            f"<p>Zonas: {_esc(', '.join(zonas) or '—')}</p><p>{_esc(texto)}</p>",
+            pie(gestion, baja),
+        )
         return asunto, texto, html
     lineas = ["Resumen de interrupciones que podrían relacionarse con tus zonas:", ""]
     items = ""

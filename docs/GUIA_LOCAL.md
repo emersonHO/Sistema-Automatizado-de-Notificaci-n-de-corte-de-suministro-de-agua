@@ -14,7 +14,16 @@ Defina contraseñas distintas de los ejemplos. Deje `API_DIAS` vacío. `INTERNAL
 docker compose --env-file .env.docker up -d --build
 ```
 
-Abra http://127.0.0.1:8000 (ciudadano) y http://127.0.0.1:8000/admin.
+Abra:
+
+- Ciudadano: http://127.0.0.1:8000
+- Operador: http://127.0.0.1:8000/admin
+- Prometheus: http://127.0.0.1:9090
+- Grafana: http://127.0.0.1:3000 (usuario/clave de `.env.docker`)
+- n8n: http://127.0.0.1:5678 (vea `n8n/README.md`; no lo active a la vez que GitHub Actions contra Render)
+- Mailpit: http://127.0.0.1:8025
+
+En el registro indique **sector y/o área**. «Todo el distrito» es opcional y genera avisos potenciales de todo el distrito.
 
 ## Recolección (fuente real)
 

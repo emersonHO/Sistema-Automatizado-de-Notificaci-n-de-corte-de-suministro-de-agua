@@ -356,3 +356,16 @@ CREATE TABLE IF NOT EXISTS resumenes_enviados (
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (usuario_id, fecha_local)
 );
+
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS aviso_inmediato BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ventana_inicio TIME;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ventana_fin TIME;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS resumen_frecuencia TEXT NOT NULL DEFAULT 'ninguno';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS informe_sin_cortes BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE suscripciones ADD COLUMN IF NOT EXISTS incluir_todo_distrito BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE resumenes_enviados ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'diario';
+ALTER TABLE resumenes_enviados DROP CONSTRAINT IF EXISTS resumenes_enviados_usuario_id_fecha_local_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_resumenes_usuario_fecha_tipo
+    ON resumenes_enviados (usuario_id, fecha_local, tipo);

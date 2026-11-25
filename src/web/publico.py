@@ -18,8 +18,12 @@ from src.ciudadano import (
     avisar_baja,
     cancelar_todo,
     confirmar_publico,
+    construir_zonas_formulario,
+    cortes_de_interes,
     enviar_correo_alta,
     listar_prefs,
+    pedir_acceso,
+    quitar_suscripcion,
     reenviar_confirmacion,
     registrar_publico,
     usuario_por_token_baja,
@@ -88,6 +92,9 @@ def suscribir_post(
     csrf: str = Form(""),
     distrito: str = Form(...),
     consentimiento: str = Form(default=""),
+    todo_distrito: str = Form(default=""),
+    sectores: str = Form(default=""),
+    areas: str = Form(default=""),
     alerta_nueva: str = Form(default=""),
     alerta_modificada: str = Form(default=""),
     alerta_cancelacion: str = Form(default=""),
@@ -104,9 +111,16 @@ def suscribir_post(
             request.session["flash"] = MENSAJE_GENERICO
             return RedirectResponse("/#suscribir", status_code=303)
         try:
+            zonas = construir_zonas_formulario(
+                conexion,
+                distrito_id=distrito,
+                todo_distrito=todo_distrito in {"on", "true", "1"},
+                sectores=sectores,
+                areas=areas,
+            )
             resultado = registrar_publico(
                 correo,
-                [{"zona_id": int(distrito)}] if str(distrito).isdigit() else [],
+                zonas,
                 consentimiento=consentimiento in {"on", "true", "1", "si", "sí"},
                 alerta_nueva=alerta_nueva in {"on", "true", "1"},
                 alerta_modificada=alerta_modificada in {"on", "true", "1"},
@@ -151,6 +165,21 @@ def reenviar(request: Request, correo: str = Form(...), csrf: str = Form(""), we
     return RedirectResponse("/", status_code=303)
 
 
+@router.post("/acceso")
+def acceso_post(request: Request, correo: str = Form(...), csrf: str = Form(""), website: str = Form(default="")):
+    validar_csrf(request, csrf)
+    with conectar() as conexion:
+        if website.strip() or not permitir(conexion, f"acceso:{_ip(request)}", 5, 15):
+            conexion.commit()
+            request.session["flash"] = MENSAJE_GENERICO
+            return RedirectResponse("/#cuenta", status_code=303)
+        resultado = pedir_acceso(correo, conexion)
+        conexion.commit()
+    enviar_correo_alta(resultado)
+    request.session["flash"] = MENSAJE_GENERICO
+    return RedirectResponse("/#cuenta", status_code=303)
+
+
 @router.get("/confirmar/{token}", response_class=HTMLResponse)
 def confirmar(request: Request, token: str):
     with conectar() as conexion:
@@ -173,7 +202,8 @@ def confirmar(request: Request, token: str):
             titulo="Suscripción confirmada",
             mensaje=(
                 f"El correo {enmascarar_correo(usuario['correo'])} quedó confirmado. "
-                "Recibirás avisos cuando una interrupción reportada podría relacionarse con tu distrito. "
+                "Recibirás avisos cuando una interrupción coincida con tus sectores o áreas "
+                "(o con el distrito completo, si lo marcaste). "
                 "Eso no confirma que tu vivienda esté afectada."
             ),
         ),
@@ -191,8 +221,19 @@ def cuenta_get(request: Request, token: str):
                 status_code=400,
             )
         prefs = listar_prefs(usuario["id"], conexion)
+        distritos = [z for z in listar_zonas_lima(conexion) if z["tipo"] == "DISTRITO"]
+        informe = cortes_de_interes(usuario["id"], conexion, limite=12)
     from src.tokens import firmar
 
+    def _hhmm(valor):
+        if valor is None:
+            return ""
+        if hasattr(valor, "strftime"):
+            return valor.strftime("%H:%M")
+        return str(valor)[:5]
+
+    usuario["ventana_inicio"] = _hhmm(usuario.get("ventana_inicio"))
+    usuario["ventana_fin"] = _hhmm(usuario.get("ventana_fin"))
     return templates.TemplateResponse(
         "publico/cuenta.html",
         _ctx(
@@ -202,6 +243,9 @@ def cuenta_get(request: Request, token: str):
             correo=enmascarar_correo(usuario["correo"]),
             pausado=usuario.get("pausado"),
             prefs=prefs,
+            distritos=distritos,
+            usuario=usuario,
+            reciente_zona=informe,
         ),
     )
 
@@ -225,14 +269,105 @@ async def cuenta_post(request: Request, token: str, csrf: str = Form("")):
                 "resumen_diario": datos.get(f"res_{sid}") == "on",
                 "pausada": datos.get(f"pau_{sid}") == "on",
             }
+        inicio = str(datos.get("ventana_inicio") or "").strip() or None
+        fin = str(datos.get("ventana_fin") or "").strip() or None
+        frecuencia = str(datos.get("resumen_frecuencia") or "ninguno").strip().lower()
+        if frecuencia not in {"ninguno", "diario", "semanal"}:
+            frecuencia = "ninguno"
         actualizar_prefs(
             usuario["id"],
-            {"pausado": datos.get("pausado") == "on", "suscripciones": subs},
+            {
+                "pausado": datos.get("pausado") == "on",
+                "aviso_inmediato": datos.get("aviso_inmediato") == "on",
+                "ventana_inicio": inicio,
+                "ventana_fin": fin,
+                "resumen_frecuencia": frecuencia,
+                "informe_sin_cortes": datos.get("informe_sin_cortes") == "on",
+                "suscripciones": subs,
+            },
             conexion,
         )
         conexion.commit()
     request.session["flash"] = "Preferencias guardadas."
     return RedirectResponse(f"/cuenta/{token}", status_code=303)
+
+
+@router.post("/cuenta/{token}/zonas")
+def cuenta_agregar_zona(
+    request: Request,
+    token: str,
+    csrf: str = Form(""),
+    distrito: str = Form(...),
+    todo_distrito: str = Form(default=""),
+    sectores: str = Form(default=""),
+    areas: str = Form(default=""),
+):
+    validar_csrf(request, csrf)
+    with conectar() as conexion:
+        usuario = usuario_por_token_gestion(token, conexion)
+        if not usuario:
+            return RedirectResponse("/", status_code=303)
+        try:
+            zonas = construir_zonas_formulario(
+                conexion,
+                distrito_id=distrito,
+                todo_distrito=todo_distrito in {"on", "true", "1"},
+                sectores=sectores,
+                areas=areas,
+            )
+            registrar_publico(
+                usuario["correo"],
+                zonas,
+                consentimiento=True,
+                conexion=conexion,
+            )
+            conexion.commit()
+        except ValueError as error:
+            conexion.rollback()
+            request.session["flash"] = str(error)
+            return RedirectResponse(f"/cuenta/{token}", status_code=303)
+    request.session["flash"] = "Zonas actualizadas."
+    return RedirectResponse(f"/cuenta/{token}", status_code=303)
+
+
+@router.post("/cuenta/{token}/quitar")
+def cuenta_quitar(
+    request: Request,
+    token: str,
+    csrf: str = Form(""),
+    suscripcion_id: int = Form(...),
+):
+    validar_csrf(request, csrf)
+    with conectar() as conexion:
+        usuario = usuario_por_token_gestion(token, conexion)
+        if not usuario:
+            return RedirectResponse("/", status_code=303)
+        quitar_suscripcion(usuario["id"], suscripcion_id, conexion)
+        conexion.commit()
+    request.session["flash"] = "Zona retirada. Ya no recibirás avisos de esa coincidencia."
+    return RedirectResponse(f"/cuenta/{token}", status_code=303)
+
+
+@router.get("/cuenta/{token}/informe", response_class=HTMLResponse)
+def cuenta_informe(request: Request, token: str):
+    with conectar() as conexion:
+        usuario = usuario_por_token_gestion(token, conexion)
+        if not usuario:
+            return templates.TemplateResponse(
+                "publico/mensaje.html",
+                _ctx(request, titulo="Enlace caducado", mensaje="Solicita un enlace nuevo."),
+                status_code=400,
+            )
+        informe = cortes_de_interes(usuario["id"], conexion)
+    return templates.TemplateResponse(
+        "publico/informe.html",
+        _ctx(
+            request,
+            token=token,
+            correo=enmascarar_correo(usuario["correo"]),
+            informe=informe,
+        ),
+    )
 
 
 @router.get("/baja/{token}", response_class=HTMLResponse)

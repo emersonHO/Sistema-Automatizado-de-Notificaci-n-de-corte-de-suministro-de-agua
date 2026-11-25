@@ -42,6 +42,9 @@ def evaluar_par(interrupcion: Mapping, zona: Mapping) -> dict | None:
     eval_inc = evaluar_interrupcion(interrupcion)
     tipo = zona["tipo"]
     nombre_n = zona["nombre_normalizado"]
+    padre = zona.get("distrito_padre")
+    if padre and nombre_n.startswith(str(padre) + " "):
+        nombre_n = nombre_n[len(str(padre)) + 1 :]
 
     if eval_inc["ambito"] == "VACIO":
         return {
@@ -104,6 +107,8 @@ def evaluar_par(interrupcion: Mapping, zona: Mapping) -> dict | None:
         return None
 
     if tipo == "AREA":
+        if padre and eval_inc["canon_distrito"] and padre != eval_inc["canon_distrito"]:
+            return None
         if nombre_n in eval_inc["areas"]:
             return {
                 "nivel": "AREA",
@@ -113,6 +118,17 @@ def evaluar_par(interrupcion: Mapping, zona: Mapping) -> dict | None:
                     "No se afirma afectación confirmada de una vivienda."
                 ),
             }
+        if len(nombre_n) >= 8:
+            for area in eval_inc["areas"]:
+                if nombre_n in area or (len(area) >= 8 and area in nombre_n):
+                    return {
+                        "nivel": "AREA",
+                        "estado": "ESPECIFICA",
+                        "explicacion": (
+                            f"Coincidencia de texto de área ({nombre_n} ⊂ {area}). "
+                            "No se afirma afectación confirmada de una vivienda."
+                        ),
+                    }
         return None
 
     return None

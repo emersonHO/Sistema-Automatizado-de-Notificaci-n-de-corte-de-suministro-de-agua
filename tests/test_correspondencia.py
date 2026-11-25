@@ -16,6 +16,44 @@ def test_casos_etiquetados():
     assert metricas["recall"] == 1
 
 
+def test_area_parcial_no_es_todo_el_distrito():
+    incidencia = {
+        "id": 9,
+        "municipalidad": "ATE",
+        "areas_afectadas": "A.H. El Amauta zona A; Sectores 163, 164, 176",
+        "infor_web": "Sectores 163, 164, 176",
+    }
+    zona_area = {
+        "id": 1,
+        "tipo": "AREA",
+        "nombre": "El Amauta",
+        "nombre_normalizado": "ATE EL AMAUTA",
+        "distrito_padre": "ATE",
+        "ambito_lima": True,
+    }
+    zona_otro = {
+        "id": 2,
+        "tipo": "AREA",
+        "nombre": "Otra urbanización",
+        "nombre_normalizado": "ATE OTRA URBANIZACION",
+        "distrito_padre": "ATE",
+        "ambito_lima": True,
+    }
+    zona_distrito = {
+        "id": 3,
+        "tipo": "DISTRITO",
+        "nombre": "Ate",
+        "nombre_normalizado": "ATE",
+        "distrito_padre": "ATE",
+        "ambito_lima": True,
+    }
+    r = evaluar_par(incidencia, zona_area)
+    assert r and r["estado"] == "ESPECIFICA"
+    assert evaluar_par(incidencia, zona_otro) is None
+    d = evaluar_par(incidencia, zona_distrito)
+    assert d and d["estado"] == "POTENCIAL"
+
+
 def test_distrito_es_potencial_no_confirmado():
     from src.casos_evaluacion import INCIDENCIA_SANTA_ANITA, ZONA_SANTA_ANITA
 

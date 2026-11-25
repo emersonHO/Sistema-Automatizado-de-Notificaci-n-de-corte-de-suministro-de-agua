@@ -80,17 +80,26 @@ def asegurar_zona(tipo: str, nombre: str, distrito_padre: str | None = None, con
         numero = extraer_numero_sector(nombre)
         if not numero:
             raise ValueError("El sector debe incluir un número (por ejemplo: Sector 168).")
-        nombre_norm = f"SECTOR {numero}"
-        nombre_mostrar = nombre_norm.title()
+        padre_tmp, _est = (
+            canonizar_distrito(distrito_padre) if distrito_padre else (None, "VACIO")
+        )
+        nombre_norm = (
+            f"{padre_tmp} SECTOR {numero}" if padre_tmp else f"SECTOR {numero}"
+        )
+        nombre_mostrar = f"Sector {numero}" + (f" ({padre_tmp.title()})" if padre_tmp else "")
         padre_canon, estado = canonizar_distrito(distrito_padre) if distrito_padre else (None, "VACIO")
         if distrito_padre and estado != "LIMA":
             raise ValueError("El distrito padre del sector debe pertenecer a Lima Metropolitana.")
         padre = padre_canon
         lima = True
     else:
-        nombre_norm = normalizar_texto(nombre)
-        if not nombre_norm:
+        nucleo = normalizar_texto(nombre)
+        if not nucleo:
             raise ValueError("El área no puede estar vacía.")
+        padre_tmp, _est = (
+            canonizar_distrito(distrito_padre) if distrito_padre else (None, "VACIO")
+        )
+        nombre_norm = f"{padre_tmp} {nucleo}" if padre_tmp else nucleo
         nombre_mostrar = nombre.strip()
         padre_canon, estado = canonizar_distrito(distrito_padre) if distrito_padre else (None, "VACIO")
         if distrito_padre and estado != "LIMA":

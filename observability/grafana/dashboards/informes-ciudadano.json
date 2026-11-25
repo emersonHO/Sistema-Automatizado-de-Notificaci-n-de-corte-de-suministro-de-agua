@@ -1,0 +1,40 @@
+{
+  "uid": "agua-informes",
+  "title": "Informes y avisos a ciudadanos",
+  "timezone": "utc",
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Notificaciones pendientes",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones{estado=\"PENDIENTE\"}", "refId": "A" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Aceptadas por el transporte",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones{estado=\"ACEPTADA_SMTP\"}", "refId": "A" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Simuladas (laboratorio)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones{estado=\"SIMULADA\"}", "refId": "A" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Fallidas",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones{estado=\"FALLIDA\"}", "refId": "A" }]
+    },
+    {
+      "id": 5, "type": "bargauge", "title": "Cola por estado (ACEPTADA_SMTP no es lectura del buzón)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "agua_notificaciones", "legendFormat": "{{estado}}", "refId": "A" }]
+    }
+  ]
+}

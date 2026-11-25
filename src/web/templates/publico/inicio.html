@@ -63,12 +63,21 @@
       <option value="{{ z.id }}">{{ z.nombre }}</option>
       {% endfor %}
     </select>
+    <p class="pub-hint">Por defecto <strong>no</strong> avisamos todo el distrito. Indica sector y/o urbanización, A.H. o cuadrante tal como suele publicarlo la fuente.</p>
+    <label for="sectores">Sectores de interés (números, separados por coma)</label>
+    <input id="sectores" name="sectores" type="text" placeholder="p. ej. 168, 212" maxlength="80">
+    <label for="areas">Áreas de interés (una por línea)</label>
+    <textarea id="areas" name="areas" rows="3" placeholder="Urb. Santa Aurelia&#10;A.H. El Amauta"></textarea>
+    <label class="pub-check">
+      <input type="checkbox" name="todo_distrito" value="on">
+      También quiero avisos de <strong>todo el distrito</strong> (potencial, no confirma tu vivienda)
+    </label>
     <fieldset class="pub-fieldset">
       <legend>Qué quieres que te avisemos</legend>
-      <label class="pub-check"><input type="checkbox" name="alerta_nueva" value="on" checked> Interrupción nueva</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_nueva" value="on" checked> Interrupción nueva (en cuanto se capture)</label>
       <label class="pub-check"><input type="checkbox" name="alerta_modificada" value="on" checked> Actualización relevante</label>
       <label class="pub-check"><input type="checkbox" name="alerta_cancelacion" value="on"> Cancelación o cierre informado por la fuente</label>
-      <label class="pub-check"><input type="checkbox" name="resumen_diario" value="on"> Resumen diario (opcional)</label>
+      <label class="pub-check"><input type="checkbox" name="resumen_diario" value="on"> Informe diario, aunque no haya cortes en mis zonas</label>
     </fieldset>
     <label class="pub-check">
       <input type="checkbox" name="consentimiento" value="on" required>
@@ -78,6 +87,22 @@
   </form>
   <h3>¿No llegó el correo?</h3>
   <p class="pub-hint">Con Resend de prueba, el envío fiable es hacia el mismo correo con el que creaste la cuenta Resend. Revisa spam. Espera 15 minutos antes de reenviar.</p>
+</section>
+
+<section class="pub-form" id="cuenta">
+  <h2>Ya tengo cuenta</h2>
+  <p class="pub-hint">Te enviamos un enlace para editar zonas, horarios e informes. No usamos contraseña.</p>
+  <form method="post" action="/acceso">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <p class="pub-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></p>
+    <label for="correo3">Correo confirmado</label>
+    <input id="correo3" name="correo" type="email" required>
+    <button class="pub-btn pub-btn-sec" type="submit">Enviar enlace de gestión</button>
+  </form>
+</section>
+
+<section class="pub-form" id="reenviar-box">
+  <h2>¿No llegó el correo de confirmación?</h2>
   <form method="post" action="/reenviar">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <p class="pub-hp" aria-hidden="true"><input name="website" tabindex="-1" autocomplete="off"></p>

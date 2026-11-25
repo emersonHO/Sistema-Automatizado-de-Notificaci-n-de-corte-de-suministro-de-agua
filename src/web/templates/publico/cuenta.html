@@ -1,18 +1,105 @@
 {% extends "publico/base_publico.html" %}
-{% block titulo %}Preferencias{% endblock %}
+{% block titulo %}Tu cuenta{% endblock %}
 {% block contenido %}
-<div class="pub-form">
+<section class="pub-hero">
+  <p class="pub-kicker">Gestión de avisos</p>
   <h1>Tus preferencias</h1>
-  <p>Cuenta {{ correo }}. Pausar deja de enviar avisos sin borrar el historial. Cancelar detiene todos los envíos futuros.</p>
+  <p>Correo {{ correo }}. Puedes cambiar zonas, horarios e informes cuando quieras. Una coincidencia no confirma que tu vivienda esté afectada.</p>
+  <p class="pub-cta">
+    <a class="pub-btn" href="/cuenta/{{ token }}/informe">Informe de mi zona</a>
+    <a class="pub-btn pub-btn-sec" href="/interrupciones">Ver listado público</a>
+  </p>
+</section>
+
+<section class="pub-seccion">
+{% if reciente_zona and reciente_zona.filas %}
+  <h2>Coincidencias recientes con tus zonas</h2>
+  <div class="pub-cards">
+    {% for fila in reciente_zona.filas %}
+    <a class="pub-corte" href="/interrupciones/{{ fila.id }}">
+      <span class="pub-chip">{{ fila.zona }}</span>
+      <strong>{{ fila.municipalidad or '—' }}</strong>
+      <span class="pub-corte-meta">{{ fila.fec_deteccion or 'sin fecha' }} · {{ fila.tipo_incid or '' }}</span>
+      <span class="pub-corte-areas">{{ (fila.areas_afectadas or '—')[:140] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+{% elif reciente_zona %}
+  <div class="pub-vacio"><p>En el lote almacenado no hay coincidencias con tus zonas ahora mismo.</p></div>
+{% endif %}
+</section>
+
+<section class="pub-form">
+  <h2>Zonas de interés</h2>
+  {% for p in prefs %}
+  <div class="pub-zona-fila">
+    <div>
+      <strong>{{ p.nombre }}</strong>
+      <span class="pub-hint">{{ p.tipo }}{% if p.distrito_padre %} · {{ p.distrito_padre.title() }}{% endif %}{% if not p.activa %} · inactiva{% endif %}</span>
+    </div>
+    {% if p.activa %}
+    <form method="post" action="/cuenta/{{ token }}/quitar">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="suscripcion_id" value="{{ p.id }}">
+      <button class="pub-btn pub-btn-sec" type="submit">Quitar</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="pub-hint">No tienes zonas activas.</p>
+  {% endfor %}
+
+  <h3>Añadir zona</h3>
+  <form method="post" action="/cuenta/{{ token }}/zonas">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Distrito</label>
+    <select name="distrito" required>
+      <option value="">Selecciona…</option>
+      {% for z in distritos %}
+      <option value="{{ z.id }}">{{ z.nombre }}</option>
+      {% endfor %}
+    </select>
+    <label>Sectores (coma)</label>
+    <input type="text" name="sectores" placeholder="168, 212">
+    <label>Áreas (una por línea)</label>
+    <textarea name="areas" rows="2"></textarea>
+    <label class="pub-check"><input type="checkbox" name="todo_distrito" value="on"> Incluir todo el distrito</label>
+    <button class="pub-btn" type="submit">Añadir</button>
+  </form>
+</section>
+
+<section class="pub-form">
+  <h2>Preferencias de envío</h2>
   <form method="post">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label class="pub-check"><input type="checkbox" name="pausado" {% if pausado %}checked{% endif %}> Pausar todos los avisos</label>
+    <label class="pub-check"><input type="checkbox" name="aviso_inmediato" {% if usuario.aviso_inmediato is none or usuario.aviso_inmediato %}checked{% endif %}> Enviar en cuanto se capture (cada ~15 min)</label>
+    <label>Ventana horaria (hora de Lima). Vacío = cualquier hora. Si desactivas el envío inmediato, se espera a esta ventana.</label>
+    <div class="pub-filtros">
+      <div>
+        <label>Desde</label>
+        <input type="time" name="ventana_inicio" value="{{ usuario.ventana_inicio or '' }}">
+      </div>
+      <div>
+        <label>Hasta</label>
+        <input type="time" name="ventana_fin" value="{{ usuario.ventana_fin or '' }}">
+      </div>
+    </div>
+    <label>Informe por correo</label>
+    <select name="resumen_frecuencia">
+      <option value="ninguno" {% if usuario.resumen_frecuencia == 'ninguno' %}selected{% endif %}>No enviar informe periódico</option>
+      <option value="diario" {% if usuario.resumen_frecuencia == 'diario' %}selected{% endif %}>Diario (incluye «sin cortes» si lo pides)</option>
+      <option value="semanal" {% if usuario.resumen_frecuencia == 'semanal' %}selected{% endif %}>Semanal (lunes)</option>
+    </select>
+    <label class="pub-check"><input type="checkbox" name="informe_sin_cortes" {% if usuario.informe_sin_cortes is none or usuario.informe_sin_cortes %}checked{% endif %}> Quiero el informe aunque no haya cortes en mis zonas</label>
+
+    <h3>Por cada zona</h3>
     <table class="pub-table">
-      <thead><tr><th>Zona</th><th>Nueva</th><th>Cambio</th><th>Cancelación</th><th>Resumen</th><th>Pausar zona</th></tr></thead>
+      <thead><tr><th>Zona</th><th>Nueva</th><th>Cambio</th><th>Cancelación</th><th>Incluir en informe</th><th>Pausar</th></tr></thead>
       <tbody>
       {% for p in prefs %}
         <tr>
-          <td>{{ p.nombre }} ({{ p.tipo }})</td>
+          <td>{{ p.nombre }}</td>
           <td><input type="checkbox" name="nueva_{{ p.id }}" {% if p.alerta_nueva %}checked{% endif %}></td>
           <td><input type="checkbox" name="mod_{{ p.id }}" {% if p.alerta_modificada %}checked{% endif %}></td>
           <td><input type="checkbox" name="can_{{ p.id }}" {% if p.alerta_cancelacion %}checked{% endif %}></td>
@@ -22,8 +109,8 @@
       {% endfor %}
       </tbody>
     </table>
-    <button class="pub-btn" type="submit">Guardar</button>
+    <button class="pub-btn" type="submit">Guardar preferencias</button>
   </form>
   <p><a href="/baja/{{ baja_token }}">Cancelar definitivamente la suscripción</a></p>
-</div>
+</section>
 {% endblock %}

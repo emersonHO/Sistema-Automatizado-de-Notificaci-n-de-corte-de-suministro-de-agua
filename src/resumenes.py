@@ -1,8 +1,9 @@
-"""Resumen diario opcional. No duplica el pipeline ni inventa incidencias."""
+"""Resumen periódico. No duplica el pipeline ni inventa incidencias."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from psycopg.rows import dict_row
 
@@ -14,20 +15,28 @@ from src.plantillas_correo import resumen as plantilla_resumen
 from src.tokens import enlace_baja, enlace_gestion
 
 
-def generar_resumenes(conexion, fecha: date | None = None) -> dict:
-    dia = fecha or date.today()
+def generar_resumenes(conexion, fecha: date | None = None, tipo: str | None = None) -> dict:
+    tz = ZoneInfo(ZONA_SISTEMA)
+    ahora = datetime.now(tz)
+    dia = fecha or ahora.date()
+    tipo_hoy = tipo or ("semanal" if ahora.weekday() == 0 else "diario")
     enviados = 0
     omitidos = 0
     with conexion.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
-            SELECT DISTINCT u.id, u.correo
+            SELECT DISTINCT u.id, u.correo, COALESCE(u.resumen_frecuencia, 'ninguno') AS frecuencia,
+                   COALESCE(u.informe_sin_cortes, TRUE) AS informe_sin_cortes
             FROM suscripciones s
             JOIN usuarios u ON u.id = s.usuario_id
-            WHERE s.activa AND s.confirmada AND COALESCE(s.resumen_diario, FALSE)
+            WHERE s.activa AND s.confirmada
               AND COALESCE(s.pausada, FALSE) = FALSE
               AND u.activo AND u.correo_confirmado
               AND COALESCE(u.pausado, FALSE) = FALSE
+              AND (
+                    COALESCE(s.resumen_diario, FALSE)
+                    OR COALESCE(u.resumen_frecuencia, 'ninguno') IN ('diario', 'semanal')
+              )
             """
         )
         usuarios = list(cursor.fetchall())
@@ -45,22 +54,35 @@ def generar_resumenes(conexion, fecha: date | None = None) -> dict:
 
     from src.suscripciones import suscripciones_activas
 
-    activas = [s for s in suscripciones_activas(conexion) if s.get("resumen_diario")]
+    activas = suscripciones_activas(conexion)
     por_usuario: dict[int, list] = {}
     for sus in activas:
         por_usuario.setdefault(sus["usuario_id"], []).append(sus)
 
     for usuario in usuarios:
         uid = usuario["id"]
+        frecuencia = (usuario.get("frecuencia") or "ninguno").lower()
+        if frecuencia == "ninguno" and not any(
+            s.get("resumen_diario") for s in por_usuario.get(uid, [])
+        ):
+            omitidos += 1
+            continue
+        if tipo_hoy == "diario" and frecuencia == "semanal":
+            omitidos += 1
+            continue
+        if tipo_hoy == "semanal" and frecuencia not in {"semanal", "diario"}:
+            if not any(s.get("resumen_diario") for s in por_usuario.get(uid, [])):
+                omitidos += 1
+                continue
         with conexion.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO resumenes_enviados (usuario_id, fecha_local, estado)
-                VALUES (%s, %s, 'EN_PROCESO')
-                ON CONFLICT (usuario_id, fecha_local) DO NOTHING
+                INSERT INTO resumenes_enviados (usuario_id, fecha_local, estado, tipo)
+                VALUES (%s, %s, 'EN_PROCESO', %s)
+                ON CONFLICT (usuario_id, fecha_local, tipo) DO NOTHING
                 RETURNING id
                 """,
-                (uid, dia),
+                (uid, dia, tipo_hoy),
             )
             if cursor.fetchone() is None:
                 omitidos += 1
@@ -83,7 +105,6 @@ def generar_resumenes(conexion, fecha: date | None = None) -> dict:
                 resultado = evaluar_par(registro, zona)
                 if coincidencia_notificable(resultado):
                     filas.append(registro)
-        # deduplicar por id
         vistos = set()
         unicas = []
         for f in filas:
@@ -92,6 +113,18 @@ def generar_resumenes(conexion, fecha: date | None = None) -> dict:
                 continue
             vistos.add(i)
             unicas.append(f)
+        if not unicas and not usuario.get("informe_sin_cortes", True):
+            with conexion.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE resumenes_enviados
+                    SET estado = 'OMITIDA', detalle = 'sin cortes y usuario no pidió informe vacío'
+                    WHERE usuario_id = %s AND fecha_local = %s AND tipo = %s
+                    """,
+                    (uid, dia, tipo_hoy),
+                )
+            omitidos += 1
+            continue
         asunto, texto, html = plantilla_resumen(
             sorted(set(nombres)),
             unicas,
@@ -105,8 +138,11 @@ def generar_resumenes(conexion, fecha: date | None = None) -> dict:
             estado = "ACEPTADA_SMTP" if debe_enviar_smtp() else "SIMULADA"
             with conexion.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE resumenes_enviados SET estado = %s WHERE usuario_id = %s AND fecha_local = %s",
-                    (estado, uid, dia),
+                    """
+                    UPDATE resumenes_enviados
+                    SET estado = %s WHERE usuario_id = %s AND fecha_local = %s AND tipo = %s
+                    """,
+                    (estado, uid, dia, tipo_hoy),
                 )
             enviados += 1
         except Exception as error:
@@ -115,8 +151,31 @@ def generar_resumenes(conexion, fecha: date | None = None) -> dict:
                     """
                     UPDATE resumenes_enviados
                     SET estado = 'FALLIDA', detalle = %s
-                    WHERE usuario_id = %s AND fecha_local = %s
+                    WHERE usuario_id = %s AND fecha_local = %s AND tipo = %s
                     """,
-                    (str(error)[:500], uid, dia),
+                    (str(error)[:500], uid, dia, tipo_hoy),
                 )
-    return {"enviados": enviados, "omitidos": omitidos, "fecha": str(dia), "zona": ZONA_SISTEMA}
+    return {
+        "enviados": enviados,
+        "omitidos": omitidos,
+        "fecha": str(dia),
+        "tipo": tipo_hoy,
+        "zona": ZONA_SISTEMA,
+    }
+
+
+def main() -> int:
+    from src.db import aplicar_esquema, conectar
+    from src.logging_config import configurar_logging
+
+    configurar_logging()
+    aplicar_esquema()
+    with conectar() as conexion:
+        resumen = generar_resumenes(conexion)
+        conexion.commit()
+    print(resumen)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

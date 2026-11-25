@@ -1,0 +1,41 @@
+# Informe periódico a suscriptores. Horario GitHub: UTC (07:00 Lima = 12:00 UTC).
+name: Informe zonas Render
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  informe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SSLMODE: require
+      BASE_URL: ${{ secrets.BASE_URL }}
+      CORREO_PROVEEDOR: resend
+      MODO_ENVIO: real
+      OPERACION_PUBLICA: "true"
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      SMTP_FROM_NAME: Avisos de agua Lima
+      LOG_FORMAT: json
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Comprobar secretos
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$BASE_URL" ]; then
+            echo "Faltan secretos DATABASE_URL o BASE_URL."
+            exit 1
+          fi
+      - name: Dependencias
+        run: pip install -r requirements.txt
+      - name: Generar informes
+        run: python -m src.resumenes

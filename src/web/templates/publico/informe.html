@@ -1,0 +1,46 @@
+{% extends "publico/base_publico.html" %}
+{% block titulo %}Informe de zona{% endblock %}
+{% block contenido %}
+<article class="pub-informe">
+  <p class="pub-kicker">Informe territorial</p>
+  <h1>Situación de tus zonas de interés</h1>
+  <p class="pub-hint">Correo {{ correo }}. Fuente pública de un tercero, no es canal oficial. Actualizado con el lote almacenado en este sistema. No confirma predios.</p>
+  <p><a class="pub-btn pub-btn-sec" href="/cuenta/{{ token }}">Volver a la cuenta</a>
+     <button class="pub-btn" type="button" onclick="window.print()">Imprimir o guardar PDF</button></p>
+
+  <h2>Zonas suscritas</h2>
+  <ul>
+    {% for z in informe.zonas %}
+    <li>{{ z.nombre }} ({{ z.tipo }}{% if z.distrito_padre %} · {{ z.distrito_padre }}{% endif %})</li>
+    {% else %}
+    <li>Sin zonas activas.</li>
+    {% endfor %}
+  </ul>
+
+  {% if informe.sin_cortes %}
+  <div class="pub-vacio">
+    <p><strong>Sin coincidencias en el lote actual.</strong> No hay interrupciones almacenadas que coincidan con tus sectores o áreas. Eso no garantiza la ausencia de un corte no publicado por la fuente.</p>
+  </div>
+  {% else %}
+  <p>{{ informe.total }} coincidencia{{ 's' if informe.total != 1 else '' }} (máximo mostrado limitado).</p>
+  <table class="pub-table">
+    <thead>
+      <tr><th>Zona</th><th>Distrito</th><th>Tipo</th><th>Detección</th><th>Áreas (fuente)</th><th>Nivel</th></tr>
+    </thead>
+    <tbody>
+    {% for fila in informe.filas %}
+      <tr>
+        <td>{{ fila.zona }}</td>
+        <td><a href="/interrupciones/{{ fila.id }}">{{ fila.municipalidad or '—' }}</a></td>
+        <td>{{ fila.tipo_incid or '—' }}</td>
+        <td>{{ fila.fec_deteccion or '—' }}</td>
+        <td>{{ (fila.areas_afectadas or '—')[:160] }}</td>
+        <td>{{ fila.coincidencia.nivel }} · {{ fila.coincidencia.estado }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p class="pub-hint">Nivel ESPECIFICA = sector o área. POTENCIAL = distrito completo. Ninguno confirma tu domicilio.</p>
+</article>
+{% endblock %}

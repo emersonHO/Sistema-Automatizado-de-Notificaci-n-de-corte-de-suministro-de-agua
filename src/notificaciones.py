@@ -399,9 +399,26 @@ def reclamar_notificacion(conexion, worker_id: str | None = None) -> dict | None
             WITH candidata AS (
                 SELECT n.id
                 FROM notificaciones n
+                JOIN usuarios u ON u.id = n.usuario_id
                 WHERE n.estado IN ('PENDIENTE', 'REINTENTANDO', 'FALLIDA')
                   AND n.intentos < COALESCE(n.max_intentos, %s)
                   AND (n.proximo_intento IS NULL OR n.proximo_intento <= NOW())
+                  AND (
+                    COALESCE(u.aviso_inmediato, TRUE)
+                    OR u.ventana_inicio IS NULL
+                    OR u.ventana_fin IS NULL
+                    OR (
+                      (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::time
+                        BETWEEN u.ventana_inicio AND u.ventana_fin
+                    )
+                    OR (
+                      u.ventana_inicio > u.ventana_fin
+                      AND (
+                        (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::time >= u.ventana_inicio
+                        OR (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::time <= u.ventana_fin
+                      )
+                    )
+                  )
                 ORDER BY n.creada_en
                 LIMIT 1
                 FOR UPDATE OF n SKIP LOCKED

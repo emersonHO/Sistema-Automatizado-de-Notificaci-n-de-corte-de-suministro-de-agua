@@ -25,7 +25,7 @@ Los nodos HTTP no leen variables de entorno (`N8N_BLOCK_ENV_ACCESS_IN_NODE=true`
 3. Si n8n pide mapear credenciales, elija `FastAPI interno` en ambos nodos HTTP.
 4. **No active** el workflow. Ejecútelo con **Test workflow**.
 5. Importe `pipeline-programado.json` y déjelo **inactivo** hasta validar. Intervalo **15 minutos**, `modo=api`, `solo_si_libre`. No usa fixtures.
-7. `alertas-admin.json` y `resumen-diario.json` también inactivos. El resumen solo cubre quien marcó la casilla opcional.
+7. `alertas-admin.json` y `resumen-diario.json` también inactivos. El resumen llama `POST /internal/v1/resumenes` (informes de zona, incluido «sin cortes»). En Render eso lo hace el workflow GitHub **Informe zonas Render**.
 6. Opcional: `seguimiento-observabilidad.json` (GET de snapshot y notificaciones; no sustituye Grafana). Si FastAPI responde 401/503, el workflow termina en los nodos de error HTTP.
 
 ## Prueba manual con fixture (no llama a cortedeagua.net.pe)
