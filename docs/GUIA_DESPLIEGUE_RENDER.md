@@ -16,9 +16,14 @@ API Key. Sin dominio verificado, el remitente de prueba (`onboarding@resend.dev`
 
 ## 4–8. Render
 
-1. **PostgreSQL Free** (Ohio u Oregon). Guarde Internal URL (web) y External URL (Actions y backups). Caduca ~30 días.
-2. **Web Service Free**, runtime Docker, Dockerfile de la raíz, comando `/app/scripts/start-web.sh`, health `/salud`.
-3. Enlace Postgres. Región la misma que la base.
+1. **PostgreSQL Free** (misma región que el web, p. ej. Oregon). Caduca ~30 días. Copie **Internal Database URL** (web) y **External Database URL** (GitHub Actions / backups).
+2. **Web Service Free**, runtime Docker, Dockerfile de la raíz. Deje el comando por defecto del Dockerfile (`/app/scripts/start-web.sh`). Health check: `/salud`.
+3. **Enlace la base al web** (si no, el arranque usa localhost y falla):
+   - Web Service → **Environment**
+   - **Add Environment Variable** → **Add from PostgreSQL** (o “Link database”)
+   - Elija su instancia Postgres
+   - Debe aparecer `DATABASE_URL` con un host tipo `dpg-….render.com` o interno `….oregon-postgres.render.com`, **nunca** `localhost` / `127.0.0.1`
+4. Si copió variables de `.env.example`, **borre** `DB_HOST=localhost`. En Render solo hace falta `DATABASE_URL`.
 
 ## 9. Variables del Web Service
 
@@ -51,6 +56,8 @@ $env:DATABASE_URL = "postgresql://...externa..."
 
 | Síntoma | Qué hacer |
 |---------|-----------|
+| `connection to server at "127.0.0.1", port 5432` | Falta `DATABASE_URL`. Enlace Postgres al Web Service (paso 3) y vuelva a desplegar. |
+| `ssl` / `certificate` al conectar | Ponga `DB_SSLMODE=require`. |
 | 403 de la API | La fuente bloquea algunas IPs; reintente; no hay paginación inventada |
 | Listado con 2 filas | Eran datos de laboratorio; ejecute el pipeline (Actions) con URL base |
 | No llega correo | Resend + destinatario de la cuenta; SMTP está bloqueado en Render |
