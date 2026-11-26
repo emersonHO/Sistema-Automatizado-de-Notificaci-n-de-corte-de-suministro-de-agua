@@ -66,6 +66,14 @@ def registrar_publico(
     alerta_modificada: bool = True,
     alerta_cancelacion: bool = True,
     resumen_diario: bool = False,
+    aviso_inmediato: bool | None = None,
+    ventana_inicio: str | None = None,
+    ventana_fin: str | None = None,
+    alerta_programada: bool = True,
+    alerta_imprevista: bool = True,
+    silenciar_finde: bool = False,
+    formato_correo: str = "completo",
+    max_avisos_dia: int = 8,
     conexion,
 ) -> dict:
     if not consentimiento:
@@ -155,15 +163,38 @@ def registrar_publico(
             )
             creadas.append(cursor.fetchone()["id"])
 
-        if resumen_diario:
-            cursor.execute(
-                """
-                UPDATE usuarios
-                SET resumen_frecuencia = 'diario', informe_sin_cortes = TRUE
-                WHERE id = %s
-                """,
-                (usuario_id,),
-            )
+        frecuencia = "diario" if resumen_diario else None
+        formato = formato_correo if formato_correo in {"completo", "breve"} else "completo"
+        tope = max(1, min(30, int(max_avisos_dia or 8)))
+        cursor.execute(
+            """
+            UPDATE usuarios SET
+              aviso_inmediato = COALESCE(%s, aviso_inmediato),
+              ventana_inicio = COALESCE(%s, ventana_inicio),
+              ventana_fin = COALESCE(%s, ventana_fin),
+              alerta_programada = %s,
+              alerta_imprevista = %s,
+              silenciar_finde = %s,
+              formato_correo = %s,
+              max_avisos_dia = %s,
+              resumen_frecuencia = COALESCE(%s, resumen_frecuencia),
+              informe_sin_cortes = COALESCE(%s, informe_sin_cortes)
+            WHERE id = %s
+            """,
+            (
+                True if aviso_inmediato is None else bool(aviso_inmediato),
+                ventana_inicio or None,
+                ventana_fin or None,
+                alerta_programada,
+                alerta_imprevista,
+                silenciar_finde,
+                formato,
+                tope,
+                frecuencia,
+                True if resumen_diario else None,
+                usuario_id,
+            ),
+        )
         cursor.execute(
             "SELECT correo_confirmado FROM usuarios WHERE id = %s",
             (usuario_id,),
@@ -265,7 +296,9 @@ def usuario_por_token_gestion(token: str, conexion) -> dict | None:
             """
             SELECT id, correo, correo_confirmado, activo, pausado,
                    aviso_inmediato, ventana_inicio, ventana_fin,
-                   resumen_frecuencia, informe_sin_cortes
+                   resumen_frecuencia, informe_sin_cortes,
+                   alerta_programada, alerta_imprevista, silenciar_finde,
+                   formato_correo, max_avisos_dia
             FROM usuarios WHERE id = %s AND activo
             """,
             (uid,),
@@ -317,6 +350,11 @@ def actualizar_prefs(usuario_id: int, cambios: dict, conexion) -> None:
                 "ventana_fin",
                 "resumen_frecuencia",
                 "informe_sin_cortes",
+                "alerta_programada",
+                "alerta_imprevista",
+                "silenciar_finde",
+                "formato_correo",
+                "max_avisos_dia",
             )
         ):
             cursor.execute(
@@ -326,7 +364,12 @@ def actualizar_prefs(usuario_id: int, cambios: dict, conexion) -> None:
                     ventana_inicio = %s,
                     ventana_fin = %s,
                     resumen_frecuencia = COALESCE(%s, resumen_frecuencia),
-                    informe_sin_cortes = COALESCE(%s, informe_sin_cortes)
+                    informe_sin_cortes = COALESCE(%s, informe_sin_cortes),
+                    alerta_programada = COALESCE(%s, alerta_programada),
+                    alerta_imprevista = COALESCE(%s, alerta_imprevista),
+                    silenciar_finde = COALESCE(%s, silenciar_finde),
+                    formato_correo = COALESCE(%s, formato_correo),
+                    max_avisos_dia = COALESCE(%s, max_avisos_dia)
                 WHERE id = %s
                 """,
                 (
@@ -335,6 +378,11 @@ def actualizar_prefs(usuario_id: int, cambios: dict, conexion) -> None:
                     cambios.get("ventana_fin"),
                     cambios.get("resumen_frecuencia"),
                     cambios.get("informe_sin_cortes"),
+                    cambios.get("alerta_programada"),
+                    cambios.get("alerta_imprevista"),
+                    cambios.get("silenciar_finde"),
+                    cambios.get("formato_correo"),
+                    cambios.get("max_avisos_dia"),
                     usuario_id,
                 ),
             )

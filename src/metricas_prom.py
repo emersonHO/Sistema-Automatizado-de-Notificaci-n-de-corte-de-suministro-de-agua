@@ -44,6 +44,7 @@ def normalizar_handler(ruta: str) -> str:
     if not partes:
         return "inicio"
     if partes[0] in {
+        "estadisticas",
         "interrupciones",
         "notificaciones",
         "ejecuciones",

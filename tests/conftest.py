@@ -21,6 +21,7 @@ os.environ.setdefault("SMTP_ENABLED", "false")
 os.environ.setdefault("MODO_ENVIO", "simulacion")
 os.environ["CORREO_PROVEEDOR"] = ""
 os.environ["RESEND_API_KEY"] = ""
+os.environ["BREVO_API_KEY"] = ""
 # El contenedor Compose puede traer ADMIN_PASSWORD; los tests HTML asumen panel abierto
 # salvo que el caso de prueba active la auth con monkeypatch.
 os.environ["ADMIN_PASSWORD"] = ""
@@ -35,6 +36,7 @@ config_mod.SMTP_ENABLED = False
 config_mod.MODO_ENVIO = "simulacion"
 config_mod.CORREO_PROVEEDOR = ""
 config_mod.RESEND_API_KEY = ""
+config_mod.BREVO_API_KEY = ""
 config_mod.ADMIN_PASSWORD = ""
 config_mod.EN_RENDER = False
 

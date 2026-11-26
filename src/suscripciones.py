@@ -306,7 +306,12 @@ def suscripciones_activas(conexion) -> list[dict]:
                    COALESCE(s.alerta_cancelacion, TRUE) AS alerta_cancelacion,
                    COALESCE(s.resumen_diario, FALSE) AS resumen_diario,
                    COALESCE(s.pausada, FALSE) AS pausada,
-                   COALESCE(u.pausado, FALSE) AS usuario_pausado
+                   COALESCE(u.pausado, FALSE) AS usuario_pausado,
+                   COALESCE(u.alerta_programada, TRUE) AS alerta_programada,
+                   COALESCE(u.alerta_imprevista, TRUE) AS alerta_imprevista,
+                   COALESCE(u.silenciar_finde, FALSE) AS silenciar_finde,
+                   COALESCE(u.max_avisos_dia, 8) AS max_avisos_dia,
+                   COALESCE(u.formato_correo, 'completo') AS formato_correo
             FROM suscripciones s
             JOIN zonas z ON z.id = s.zona_id
             JOIN usuarios u ON u.id = s.usuario_id

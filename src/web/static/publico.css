@@ -212,6 +212,14 @@ textarea, input[type=email], select, input[type=text], input[type=password], inp
 }
 .pub-filtros .pub-btn { margin-top: 1.5rem; }
 .pub-pagina { display: flex; gap: .8rem; align-items: center; margin: 1rem 0 2rem; }
+.pub-kpis { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 0 0 1.6rem; }
+.pub-kpi { background: #fff; border: 1px solid var(--line); border-radius: .85rem; padding: .9rem 1rem; box-shadow: var(--shadow); font-size: .85rem; color: var(--muted); }
+.pub-kpi span { display: block; font-size: 1.6rem; font-weight: 750; color: var(--teal); line-height: 1.1; margin-bottom: .2rem; }
+.pub-barra-fila { display: grid; grid-template-columns: minmax(7rem, 11rem) 1fr 2.5rem; gap: .6rem; align-items: center; margin: .35rem 0; font-size: .88rem; }
+.pub-barra { height: .55rem; background: #e4eef0; border-radius: 99px; overflow: hidden; }
+.pub-barra i { display: block; height: 100%; background: linear-gradient(90deg, var(--teal), var(--cyan)); }
+.pub-barra-n { text-align: right; font-weight: 650; }
+.pub-grafana { width: 100%; min-height: 480px; border: 1px solid var(--line); border-radius: .8rem; }
 @media (max-width: 720px) {
   .pub-stats { grid-template-columns: 1fr; }
   .pub-hero h1 { max-width: none; }

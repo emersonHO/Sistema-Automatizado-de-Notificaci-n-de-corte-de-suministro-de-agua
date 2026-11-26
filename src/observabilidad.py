@@ -266,6 +266,93 @@ def _capacidad(cursor) -> dict:
     }
 
 
+def estadisticas_publicas(conexion=None) -> dict:
+    """Agregados sin correos ni identificadores de persona."""
+    propia = conexion is None
+    if propia:
+        conexion = conectar()
+    try:
+        with conexion.cursor(row_factory=dict_row) as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE ambito_lima) AS lima,
+                       COUNT(*) FILTER (WHERE upper(tipo_incid) = 'PROGRAMADA') AS programadas,
+                       COUNT(*) FILTER (WHERE upper(tipo_incid) = 'IMPREVISTA') AS imprevistas
+                FROM interrupciones
+                """
+            )
+            tot = dict(cursor.fetchone())
+            cursor.execute(
+                """
+                SELECT COALESCE(municipalidad, '(sin distrito)') AS distrito, COUNT(*) AS n
+                FROM interrupciones
+                WHERE ambito_lima IS TRUE
+                GROUP BY 1
+                ORDER BY n DESC
+                LIMIT 12
+                """
+            )
+            por_distrito = [dict(r) for r in cursor.fetchall()]
+            cursor.execute(
+                """
+                SELECT total_recibido, total_reportado, captura_completa, fecha_captura
+                FROM capturas ORDER BY id DESC LIMIT 1
+                """
+            )
+            captura = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT estado, fecha_inicio, registros_leidos, registros_nuevos, captura_completa
+                FROM ejecuciones_proceso ORDER BY fecha_inicio DESC LIMIT 1
+                """
+            )
+            ejecucion = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FILTER (WHERE correo_confirmado AND activo) AS suscriptores
+                FROM usuarios
+                """
+            )
+            suscriptores = int(cursor.fetchone()["suscriptores"] or 0)
+            cursor.execute(
+                """
+                SELECT
+                  COUNT(*) FILTER (WHERE estado = 'ACEPTADA_SMTP') AS aceptadas,
+                  COUNT(*) FILTER (WHERE estado = 'SIMULADA') AS simuladas,
+                  COUNT(*) FILTER (WHERE estado = 'PENDIENTE') AS pendientes
+                FROM notificaciones
+                """
+            )
+            notif = dict(cursor.fetchone())
+        max_n = max((int(d["n"]) for d in por_distrito), default=1) or 1
+        for d in por_distrito:
+            d["pct"] = round(100 * int(d["n"]) / max_n)
+        return {
+            "total": int(tot["total"] or 0),
+            "lima": int(tot["lima"] or 0),
+            "programadas": int(tot["programadas"] or 0),
+            "imprevistas": int(tot["imprevistas"] or 0),
+            "por_distrito": por_distrito,
+            "captura": dict(captura) if captura else None,
+            "ejecucion": dict(ejecucion) if ejecucion else None,
+            "suscriptores": suscriptores,
+            "notificaciones": {
+                "aceptadas": int(notif["aceptadas"] or 0),
+                "simuladas": int(notif["simuladas"] or 0),
+                "pendientes": int(notif["pendientes"] or 0),
+            },
+            "notas": [
+                "Cifras del lote almacenado en este sistema, no del histórico oficial.",
+                "ACEPTADA_SMTP significa que el transporte aceptó el mensaje, no que se leyó.",
+                "No se publican correos ni zonas individuales de suscriptores.",
+            ],
+        }
+    finally:
+        if propia:
+            conexion.close()
+
+
 def snapshot(conexion=None) -> dict:
     propia = conexion is None
     if propia:

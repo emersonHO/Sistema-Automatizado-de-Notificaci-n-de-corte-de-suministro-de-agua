@@ -1,0 +1,65 @@
+{% extends "publico/base_publico.html" %}
+{% block titulo %}Estadísticas públicas{% endblock %}
+{% block contenido %}
+<section class="pub-hero">
+  <p class="pub-kicker">Observabilidad pública</p>
+  <h1>Estadísticas del servicio</h1>
+  <p>Agregados del lote almacenado y de las capturas. Sin correos ni zonas individuales. Prometheus alimenta Grafana (operador); esta página es la vista ciudadana de las mismas cifras de dominio.</p>
+</section>
+
+<div class="pub-kpis">
+  <div class="pub-kpi"><span>{{ stats.total }}</span>interrupciones almacenadas</div>
+  <div class="pub-kpi"><span>{{ stats.lima }}</span>en Lima Metropolitana</div>
+  <div class="pub-kpi"><span>{{ stats.programadas }}</span>programadas</div>
+  <div class="pub-kpi"><span>{{ stats.imprevistas }}</span>imprevistas</div>
+  <div class="pub-kpi"><span>{{ stats.suscriptores }}</span>correos confirmados</div>
+  <div class="pub-kpi"><span>{{ stats.notificaciones.aceptadas }}</span>avisos aceptados por el transporte</div>
+</div>
+
+<section class="pub-form">
+  <h2>Distritos con más registros en este lote</h2>
+  {% for d in stats.por_distrito %}
+  <div class="pub-barra-fila">
+    <span class="pub-barra-eti">{{ d.distrito }}</span>
+    <div class="pub-barra"><i style="width:{{ d.pct }}%"></i></div>
+    <span class="pub-barra-n">{{ d.n }}</span>
+  </div>
+  {% else %}
+  <p class="pub-hint">Aún no hay lote almacenado.</p>
+  {% endfor %}
+</section>
+
+<section class="pub-grid">
+  <article class="pub-card">
+    <h2>Última captura</h2>
+    {% if stats.captura %}
+    <p>Recibidos {{ stats.captura.total_recibido }} / reportados {{ stats.captura.total_reportado }} · completa={{ stats.captura.captura_completa }}</p>
+    <p class="pub-hint">{{ stats.captura.fecha_captura }}</p>
+    {% else %}
+    <p>Sin capturas.</p>
+    {% endif %}
+  </article>
+  <article class="pub-card">
+    <h2>Última ejecución</h2>
+    {% if stats.ejecucion %}
+    <p>Estado {{ stats.ejecucion.estado }} · leídos {{ stats.ejecucion.registros_leidos }} · nuevos {{ stats.ejecucion.registros_nuevos }}</p>
+    {% else %}
+    <p>Sin ejecuciones.</p>
+    {% endif %}
+  </article>
+  <article class="pub-card">
+    <h2>Cola de avisos</h2>
+    <p>Pendientes {{ stats.notificaciones.pendientes }} · simuladas {{ stats.notificaciones.simuladas }} (laboratorio).</p>
+    <p class="pub-hint">ACEPTADA no significa que el destinatario haya leído el correo.</p>
+  </article>
+</section>
+
+{% if grafana_public_url %}
+<section class="pub-form">
+  <h2>Panel Grafana (público)</h2>
+  <iframe class="pub-grafana" title="Grafana" src="{{ grafana_public_url }}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+</section>
+{% endif %}
+
+<p class="pub-hint">{% for n in stats.notas %}{{ n }} {% endfor %} JSON: <a href="/estadisticas.json">/estadisticas.json</a></p>
+{% endblock %}

@@ -8,9 +8,10 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from src.config import PUBLIC_REVELAR_ENLACE, TRUST_PROXY
+from src.config import GRAFANA_PUBLIC_URL, PUBLIC_REVELAR_ENLACE, TRUST_PROXY
 from src.url_publica import url_base
 from src.correo import advertencia_smtp_publico
+from src.observabilidad import estadisticas_publicas
 from src.web.consultas import listar_interrupciones
 from src.ciudadano import (
     MENSAJE_GENERICO,
@@ -59,6 +60,7 @@ def _ctx(request: Request, **kwargs):
             "La información procede de una fuente pública de un tercero "
             "y no reemplaza los canales oficiales."
         ),
+        "grafana_public_url": GRAFANA_PUBLIC_URL,
     }
     datos.update(kwargs)
     return datos
@@ -85,6 +87,25 @@ def privacidad(request: Request):
     return templates.TemplateResponse("publico/privacidad.html", _ctx(request))
 
 
+@router.get("/estadisticas", response_class=HTMLResponse)
+def estadisticas(request: Request):
+    with conectar() as conexion:
+        datos = estadisticas_publicas(conexion)
+    return templates.TemplateResponse(
+        "publico/estadisticas.html",
+        _ctx(request, stats=datos),
+    )
+
+
+@router.get("/estadisticas.json")
+def estadisticas_json():
+    from fastapi.responses import JSONResponse
+
+    with conectar() as conexion:
+        datos = estadisticas_publicas(conexion)
+    return JSONResponse(datos)
+
+
 @router.post("/suscribir")
 def suscribir_post(
     request: Request,
@@ -99,6 +120,14 @@ def suscribir_post(
     alerta_modificada: str = Form(default=""),
     alerta_cancelacion: str = Form(default=""),
     resumen_diario: str = Form(default=""),
+    aviso_inmediato: str = Form(default="on"),
+    ventana_inicio: str = Form(default=""),
+    ventana_fin: str = Form(default=""),
+    alerta_programada: str = Form(default="on"),
+    alerta_imprevista: str = Form(default="on"),
+    silenciar_finde: str = Form(default=""),
+    formato_correo: str = Form(default="completo"),
+    max_avisos_dia: str = Form(default="8"),
     website: str = Form(default=""),
 ):
     validar_csrf(request, csrf)
@@ -126,6 +155,14 @@ def suscribir_post(
                 alerta_modificada=alerta_modificada in {"on", "true", "1"},
                 alerta_cancelacion=alerta_cancelacion in {"on", "true", "1"},
                 resumen_diario=resumen_diario in {"on", "true", "1"},
+                aviso_inmediato=aviso_inmediato in {"on", "true", "1"},
+                ventana_inicio=ventana_inicio.strip() or None,
+                ventana_fin=ventana_fin.strip() or None,
+                alerta_programada=alerta_programada in {"on", "true", "1"},
+                alerta_imprevista=alerta_imprevista in {"on", "true", "1"},
+                silenciar_finde=silenciar_finde in {"on", "true", "1"},
+                formato_correo=formato_correo,
+                max_avisos_dia=int(max_avisos_dia or 8) if str(max_avisos_dia).isdigit() else 8,
                 conexion=conexion,
             )
             conexion.commit()
@@ -283,6 +320,11 @@ async def cuenta_post(request: Request, token: str, csrf: str = Form("")):
                 "ventana_fin": fin,
                 "resumen_frecuencia": frecuencia,
                 "informe_sin_cortes": datos.get("informe_sin_cortes") == "on",
+                "alerta_programada": datos.get("alerta_programada") == "on",
+                "alerta_imprevista": datos.get("alerta_imprevista") == "on",
+                "silenciar_finde": datos.get("silenciar_finde") == "on",
+                "formato_correo": str(datos.get("formato_correo") or "completo"),
+                "max_avisos_dia": int(datos.get("max_avisos_dia") or 8),
                 "suscripciones": subs,
             },
             conexion,

@@ -39,6 +39,44 @@ def test_resend_aceptado(monkeypatch):
     assert "no se confirma" in texto.lower()
 
 
+def test_brevo_aceptado(monkeypatch):
+    monkeypatch.setattr(c, "CORREO_PROVEEDOR", "brevo")
+    monkeypatch.setattr(c, "BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setattr(c, "BREVO_API_URL", "https://api.brevo.com/v3/smtp/email")
+    monkeypatch.setattr(c, "MODO_ENVIO", "real")
+    monkeypatch.setattr(c, "SMTP_FROM", "avisos@gmail.com")
+    monkeypatch.setattr(c, "SMTP_FROM_NAME", "Avisos")
+
+    def fake_post(url, headers, json, timeout):
+        assert headers["api-key"] == "xkeysib-test"
+        assert json["to"] == [{"email": "ciudadano@example.com"}]
+        assert json["sender"]["email"] == "avisos@gmail.com"
+        return _Resp(201, {"messageId": "brevo-1"})
+
+    monkeypatch.setattr(c.httpx, "post", fake_post)
+    assert c.debe_enviar_smtp() is True
+    assert c.modo_canal() == "brevo"
+    texto = c.enviar("ciudadano@example.com", "Asunto", "Hola", "<p>Hola</p>")
+    assert "brevo-1" in texto
+
+
+def test_brevo_error_no_simula(monkeypatch):
+    monkeypatch.setattr(c, "CORREO_PROVEEDOR", "brevo")
+    monkeypatch.setattr(c, "BREVO_API_KEY", "xkeysib-test")
+    monkeypatch.setattr(c, "MODO_ENVIO", "real")
+    monkeypatch.setattr(c, "SMTP_FROM", "avisos@gmail.com")
+
+    def fake_post(*_a, **_k):
+        return _Resp(401, {"message": "Key not found"})
+
+    monkeypatch.setattr(c.httpx, "post", fake_post)
+    try:
+        c.enviar("ciudadano@example.com", "A", "b", "")
+        raise AssertionError("debía fallar")
+    except RuntimeError as error:
+        assert "401" in str(error)
+
+
 def test_resend_error_no_simula(monkeypatch):
     monkeypatch.setattr(c, "CORREO_PROVEEDOR", "resend")
     monkeypatch.setattr(c, "RESEND_API_KEY", "re_test")

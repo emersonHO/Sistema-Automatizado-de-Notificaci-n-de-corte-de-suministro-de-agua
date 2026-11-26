@@ -23,10 +23,10 @@ jobs:
       DB_SSLMODE: require
       API_URL: https://cortedeagua.net.pe/api.php
       BASE_URL: ${{ secrets.BASE_URL }}
-      CORREO_PROVEEDOR: resend
+      CORREO_PROVEEDOR: brevo
       MODO_ENVIO: real
       OPERACION_PUBLICA: "true"
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       SMTP_FROM_NAME: Avisos de agua Lima
       INTERNAL_PERMITIR_FIXTURE: "false"

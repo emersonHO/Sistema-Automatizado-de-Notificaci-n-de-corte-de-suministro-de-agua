@@ -19,7 +19,7 @@ PostgreSQL no se publica. No ejecute `docker compose down -v`.
 
 ## Despliegue (Render Free)
 
-[`docs/GUIA_DESPLIEGUE_RENDER.md`](docs/GUIA_DESPLIEGUE_RENDER.md). n8n no va a Render; el ciclo de 15 min es GitHub Actions (`python -m src.ciclo_produccion`). Correo en Render: Resend (HTTPS).
+[`docs/GUIA_DESPLIEGUE_RENDER.md`](docs/GUIA_DESPLIEGUE_RENDER.md). n8n no va a Render; el ciclo de 15 min es GitHub Actions (`python -m src.ciclo_produccion`). Correo en Render: Brevo por HTTPS (plan gratuito; no hace falta dominio). Resend sigue como opción.
 
 ## n8n local
 

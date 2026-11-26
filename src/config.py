@@ -54,6 +54,8 @@ MODO_ENVIO = os.getenv("MODO_ENVIO", "simulacion").strip().lower()
 CORREO_PROVEEDOR = os.getenv("CORREO_PROVEEDOR", "").strip().lower()
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_API_URL = os.getenv("RESEND_API_URL", "https://api.resend.com/emails").strip()
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
+BREVO_API_URL = os.getenv("BREVO_API_URL", "https://api.brevo.com/v3/smtp/email").strip()
 SMTP_HOST = os.getenv("SMTP_HOST", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
@@ -63,6 +65,7 @@ SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Avisos de agua Lima")
 SMTP_STARTTLS = os.getenv("SMTP_STARTTLS", "true").lower() in {"1", "true", "yes"}
 SMTP_TIMEOUT = float(os.getenv("SMTP_TIMEOUT", "20"))
 ADMIN_ALERT_EMAIL = os.getenv("ADMIN_ALERT_EMAIL", "").strip()
+GRAFANA_PUBLIC_URL = os.getenv("GRAFANA_PUBLIC_URL", "").strip()
 SESSION_HTTPS = os.getenv("SESSION_HTTPS", "true" if EN_RENDER else "false").lower() in {
     "1",
     "true",

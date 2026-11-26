@@ -92,6 +92,16 @@
       <option value="semanal" {% if usuario.resumen_frecuencia == 'semanal' %}selected{% endif %}>Semanal (lunes)</option>
     </select>
     <label class="pub-check"><input type="checkbox" name="informe_sin_cortes" {% if usuario.informe_sin_cortes is none or usuario.informe_sin_cortes %}checked{% endif %}> Quiero el informe aunque no haya cortes en mis zonas</label>
+    <label class="pub-check"><input type="checkbox" name="alerta_programada" {% if usuario.alerta_programada is none or usuario.alerta_programada %}checked{% endif %}> Cortes programados</label>
+    <label class="pub-check"><input type="checkbox" name="alerta_imprevista" {% if usuario.alerta_imprevista is none or usuario.alerta_imprevista %}checked{% endif %}> Cortes imprevistos</label>
+    <label class="pub-check"><input type="checkbox" name="silenciar_finde" {% if usuario.silenciar_finde %}checked{% endif %}> Silenciar fin de semana</label>
+    <label>Máximo de avisos al día</label>
+    <input type="number" name="max_avisos_dia" min="1" max="30" value="{{ usuario.max_avisos_dia or 8 }}">
+    <label>Formato del correo</label>
+    <select name="formato_correo">
+      <option value="completo" {% if usuario.formato_correo != 'breve' %}selected{% endif %}>Completo</option>
+      <option value="breve" {% if usuario.formato_correo == 'breve' %}selected{% endif %}>Breve</option>
+    </select>
 
     <h3>Por cada zona</h3>
     <table class="pub-table">

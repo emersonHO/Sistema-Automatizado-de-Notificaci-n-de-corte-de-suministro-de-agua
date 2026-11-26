@@ -7,6 +7,7 @@ import logging
 import os
 import socket
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from psycopg.rows import dict_row
@@ -143,6 +144,32 @@ def _insertar_notificacion(cursor, sus, evento, coincidencia_id, resultado, asun
     return cursor.rowcount
 
 
+def _omite_preferencias(cursor, sus: dict, registro: dict) -> bool:
+    tipo_inc = str(registro.get("tipo_incid") or "").upper()
+    if tipo_inc == "PROGRAMADA" and not sus.get("alerta_programada", True):
+        return True
+    if tipo_inc == "IMPREVISTA" and not sus.get("alerta_imprevista", True):
+        return True
+    if sus.get("silenciar_finde"):
+        if datetime.now(ZoneInfo(ZONA_SISTEMA)).weekday() >= 5:
+            return True
+    tope = int(sus.get("max_avisos_dia") or 0)
+    if tope > 0:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS n FROM notificaciones
+            WHERE usuario_id = %s
+              AND (creada_en AT TIME ZONE 'America/Lima')::date
+                  = (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::date
+              AND estado NOT IN ('DESCARTADA', 'CANCELADA')
+            """,
+            (sus["usuario_id"],),
+        )
+        if int(cursor.fetchone()["n"]) >= tope:
+            return True
+    return False
+
+
 def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], eventos: list[dict], ejecucion_id: int | None) -> dict:
     """Crea coincidencias y filas de outbox solo para eventos relevantes."""
     activas = suscripciones_activas(conexion)
@@ -171,6 +198,8 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
                     continue
                 if tipo == "CANCELADA" and not sus.get("alerta_cancelacion", True):
                     continue
+                if _omite_preferencias(cursor, sus, registro):
+                    continue
                 zona = {
                     "id": sus["zona_id"],
                     "tipo": sus["tipo"],
@@ -179,6 +208,7 @@ def crear_coincidencias_y_notificaciones(conexion, registros: list[dict], evento
                     "distrito_padre": sus["distrito_padre"],
                     "ambito_lima": sus["ambito_lima"],
                     "usuario_id": sus["usuario_id"],
+                    "formato_correo": sus.get("formato_correo") or "completo",
                 }
                 resultado = evaluar_par(registro, zona)
                 if resultado is None:
@@ -246,6 +276,8 @@ def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None)
                     continue
                 if tipo == "CANCELADA" and not sus.get("alerta_cancelacion", True):
                     continue
+                if _omite_preferencias(cursor, sus, registro):
+                    continue
                 cursor.execute(
                     """
                     SELECT 1 FROM notificaciones
@@ -264,6 +296,7 @@ def notificar_incidencias_vigentes_sin_aviso(conexion, ejecucion_id: int | None)
                     "distrito_padre": sus["distrito_padre"],
                     "ambito_lima": sus["ambito_lima"],
                     "usuario_id": sus["usuario_id"],
+                    "formato_correo": sus.get("formato_correo") or "completo",
                 }
                 resultado = evaluar_par(registro, zona)
                 if resultado is None:
@@ -488,7 +521,7 @@ def procesar_reclamada(
                 )
                 estado = "ACEPTADA_SMTP"
                 resultado = "ACEPTADA_SMTP"
-                canal = "resend" if modo_canal() == "resend" else "smtp"
+                canal = modo_canal() if modo_canal() in {"brevo", "resend", "smtp"} else "smtp"
                 cursor.execute(
                     "UPDATE notificaciones SET canal = %s WHERE id = %s",
                     (canal, fila["id"]),

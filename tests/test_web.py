@@ -21,6 +21,13 @@ def test_panel_y_suscripcion(conexion):
     assert "Resumen operativo" in r.text
     r = cliente.get("/interrupciones")
     assert r.status_code == 200
+    r = cliente.get("/estadisticas")
+    assert r.status_code == 200
+    assert "Estadísticas" in r.text
+    js = cliente.get("/estadisticas.json")
+    assert js.status_code == 200
+    assert "suscriptores" in js.json()
+    assert "correo" not in js.json()
     r = cliente.get("/suscripciones")
     assert r.status_code == 200
     r = cliente.get("/notificaciones")

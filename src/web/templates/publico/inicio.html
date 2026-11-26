@@ -73,11 +73,42 @@
       También quiero avisos de <strong>todo el distrito</strong> (potencial, no confirma tu vivienda)
     </label>
     <fieldset class="pub-fieldset">
-      <legend>Qué quieres que te avisemos</legend>
-      <label class="pub-check"><input type="checkbox" name="alerta_nueva" value="on" checked> Interrupción nueva (en cuanto se capture)</label>
+      <legend>Eventos</legend>
+      <label class="pub-check"><input type="checkbox" name="alerta_nueva" value="on" checked> Interrupción nueva</label>
       <label class="pub-check"><input type="checkbox" name="alerta_modificada" value="on" checked> Actualización relevante</label>
-      <label class="pub-check"><input type="checkbox" name="alerta_cancelacion" value="on"> Cancelación o cierre informado por la fuente</label>
-      <label class="pub-check"><input type="checkbox" name="resumen_diario" value="on"> Informe diario, aunque no haya cortes en mis zonas</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_cancelacion" value="on"> Cancelación informada por la fuente</label>
+    </fieldset>
+    <fieldset class="pub-fieldset">
+      <legend>Tipos de corte</legend>
+      <label class="pub-check"><input type="checkbox" name="alerta_programada" value="on" checked> Programada</label>
+      <label class="pub-check"><input type="checkbox" name="alerta_imprevista" value="on" checked> Imprevista</label>
+    </fieldset>
+    <fieldset class="pub-fieldset">
+      <legend>Cuándo y cuántos avisos</legend>
+      <label class="pub-check"><input type="checkbox" name="aviso_inmediato" value="on" checked> Enviar en cuanto se capture (~15 min)</label>
+      <label class="pub-check"><input type="checkbox" name="silenciar_finde" value="on"> No avisar sábados ni domingos (hora Lima)</label>
+      <label class="pub-check"><input type="checkbox" name="resumen_diario" value="on"> Informe diario, también si no hay cortes</label>
+      <div class="pub-filtros">
+        <div>
+          <label for="ventana_inicio">No antes de (opcional)</label>
+          <input id="ventana_inicio" type="time" name="ventana_inicio">
+        </div>
+        <div>
+          <label for="ventana_fin">No después de (opcional)</label>
+          <input id="ventana_fin" type="time" name="ventana_fin">
+        </div>
+        <div>
+          <label for="max_avisos_dia">Máximo de avisos al día</label>
+          <input id="max_avisos_dia" type="number" name="max_avisos_dia" min="1" max="30" value="8">
+        </div>
+        <div>
+          <label for="formato_correo">Formato del correo</label>
+          <select id="formato_correo" name="formato_correo">
+            <option value="completo" selected>Completo</option>
+            <option value="breve">Breve</option>
+          </select>
+        </div>
+      </div>
     </fieldset>
     <label class="pub-check">
       <input type="checkbox" name="consentimiento" value="on" required>

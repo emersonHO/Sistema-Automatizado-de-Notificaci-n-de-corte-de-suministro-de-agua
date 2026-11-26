@@ -19,6 +19,8 @@ def test_rutas_tunel():
     assert ruta_permitida_en_tunel("/baja/tok")
     assert ruta_permitida_en_tunel("/privacidad")
     assert ruta_permitida_en_tunel("/interrupciones")
+    assert ruta_permitida_en_tunel("/estadisticas")
+    assert ruta_permitida_en_tunel("/acceso")
     assert ruta_permitida_en_tunel("/static/publico.css")
     assert not ruta_permitida_en_tunel("/admin")
     assert not ruta_permitida_en_tunel("/admin/login")

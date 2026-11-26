@@ -76,6 +76,20 @@ def interrupcion(
         "CANCELADA": "Aviso: se informó la cancelación de una interrupción",
     }
     asunto = asuntos.get(tipo, "Aviso de interrupción de agua")
+    if (zona.get("formato_correo") or "completo") == "breve":
+        texto = (
+            f"{zona.get('nombre') or 'Tu zona'}: posible coincidencia "
+            f"({interrupcion.get('municipalidad') or '—'}). "
+            f"Detalle: {url_base()}/interrupciones/{interrupcion.get('id') or ''}\n"
+            f"Gestionar: {gestion}"
+        )
+        html = envoltorio(
+            asunto,
+            f"<p>{_esc(zona.get('nombre') or 'Tu zona')} · {_esc(interrupcion.get('municipalidad') or '—')}</p>"
+            f"<p><a href='{_esc(url_base())}/interrupciones/{_esc(interrupcion.get('id') or '')}'>Ver detalle</a></p>",
+            pie(gestion, baja),
+        )
+        return asunto, texto, html
     campos = [
         ("Zona de interés", zona.get("nombre")),
         ("Tipo de zona", zona.get("tipo")),

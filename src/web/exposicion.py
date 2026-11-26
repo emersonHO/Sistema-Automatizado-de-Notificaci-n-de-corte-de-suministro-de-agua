@@ -14,6 +14,8 @@ PREFIJOS_PUBLICOS = (
     "/baja",
     "/privacidad",
     "/interrupciones",
+    "/estadisticas",
+    "/acceso",
     "/static",
 )
 

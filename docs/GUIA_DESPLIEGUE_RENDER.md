@@ -98,16 +98,16 @@ Copie cada resultado a `SESSION_SECRET`, `ADMIN_PASSWORD` e `INTERNAL_API_TOKEN`
 | `API_URL` | `https://cortedeagua.net.pe/api.php` |
 | `API_DIAS` | déjela **sin valor** (vacía). No ponga `0` si el panel no acepta vacío; en ese caso **no cree** esta clave. |
 | `ZONA_SISTEMA` | `America/Lima` |
-| `CORREO_PROVEEDOR` | `resend` |
+| `CORREO_PROVEEDOR` | `brevo` |
 | `MODO_ENVIO` | `real` |
 | `SMTP_ENABLED` | `false` |
-| `RESEND_API_KEY` | la clave de [https://resend.com/api-keys](https://resend.com/api-keys) (empieza por `re_`) |
-| `SMTP_FROM` | `Avisos <onboarding@resend.dev>` (si aún no verificó dominio en Resend) |
+| `BREVO_API_KEY` | la clave de [Brevo → SMTP & API](https://app.brevo.com/settings/keys/api) |
+| `SMTP_FROM` | el correo que verificó en Brevo → Senders (puede ser Gmail) |
 | `SMTP_FROM_NAME` | `Avisos de agua Lima` |
 | `LOG_FORMAT` | `json` |
 | `LOG_LEVEL` | `INFO` |
 
-Opcional: `ADMIN_ALERT_EMAIL` = el correo de su cuenta Resend.
+Opcional: `ADMIN_ALERT_EMAIL` = un correo suyo para alertas internas.
 
 Pulse **Save changes**.
 
@@ -130,11 +130,17 @@ Si vuelve a salir el mismo `RuntimeError`, vuelva al paso 4: `DATABASE_URL` sigu
 
 ---
 
-## Parte B — Resend (correo)
+## Parte B — Brevo (correo gratuito, sin comprar dominio)
 
-1. Entre a [https://resend.com](https://resend.com) y cree una API Key.
-2. Péguela en Render como `RESEND_API_KEY` (paso 5).
-3. Sin dominio verificado, los envíos fiables son hacia **el mismo correo** con el que se registró en Resend, usando remitente `onboarding@resend.dev`.
+El error *domain was not found in the Registry/RDAP* de Resend significa que ese dominio **no está registrado**. No hace falta dominio si usa Brevo.
+
+1. Cree cuenta en [https://app.brevo.com](https://app.brevo.com) (plan gratuito).
+2. **Senders, Domains & Dedicated IPs** → **Add a sender**: ponga **su Gmail** (u otro correo que controle). Confirme el enlace que le llega.
+3. **SMTP & API** → **API Keys** → cree una clave. Cópiela una sola vez.
+4. En Render: `CORREO_PROVEEDOR=brevo`, `BREVO_API_KEY=…`, `SMTP_FROM=` el mismo correo verificado en Senders.
+5. El plan gratuito tiene **cupo diario** (consúltelo en Brevo). No use SMTP de Brevo en Render: los puertos 25/465/587 están bloqueados; el sistema usa la **API HTTPS**.
+
+Resend sigue disponible (`CORREO_PROVEEDOR=resend`) si más adelante registra un dominio de verdad.
 
 ---
 
@@ -149,8 +155,8 @@ El web en Render **no** descarga cortes solo. Eso lo hace el workflow `.github/w
 |------|--------|
 | `DATABASE_URL` | External Database URL de Render (paso C.1) |
 | `BASE_URL` | el mismo `https://….onrender.com` del paso 5 |
-| `RESEND_API_KEY` | la misma `re_…` |
-| `SMTP_FROM` | `onboarding@resend.dev` (solo el correo; el nombre lo pone `SMTP_FROM_NAME`) |
+| `BREVO_API_KEY` | la misma clave de Brevo |
+| `SMTP_FROM` | el correo verificado en Brevo Senders |
 
 3. **Actions** → **Pipeline Render** → **Run workflow**.
 4. Cuando termine en verde, en la web abierta `/interrupciones` (puede tardar un minuto).
@@ -177,7 +183,7 @@ El horario del cron es **UTC** (cada 15 min). Lima es UTC−5.
 3. Confirme el correo. En «Ya tengo cuenta» pida un enlace para editar zonas, horarios e informes.
 4. Abra **Informe de mi zona** cuando quiera un reporte de coincidencias (o de «sin cortes» en el lote actual).
 5. GitHub Actions: además de **Pipeline Render** (cada 15 min, avisos inmediatos), active **Informe zonas Render** (diario 07:00 Lima). Usa los mismos secretos.
-6. Grafana y Prometheus **no van en Render Free**. En su PC: `docker compose --env-file .env.docker up -d` y abra Grafana en :3000 (dashboards «Avisos de agua»).
+6. Estadísticas para todos: `/estadisticas` en Render. Grafana/Prometheus en PC (`:3000` / `:9090`). Grafana Cloud: dashboard público + `GRAFANA_PUBLIC_URL`.
 7. n8n **solo local** (o n8n Cloud si usted lo contrata). En Render el cron es GitHub. No active `pipeline-programado.json` contra la misma base que Actions.
 
 ## Parte E — Después de que el web esté Live
@@ -186,9 +192,21 @@ Suba este código a GitHub y deje que Render vuelva a desplegar.
 
 1. Espere **2 minutos** y abra `https://SU-SERVICIO.onrender.com/` y `/interrupciones`.
 2. Si sigue en 0 cortes: **Operador** → entre con `ADMIN_USER` / `ADMIN_PASSWORD` → **Actualizar desde la fuente ahora** → recargue.
-3. Correo: en Environment, `CORREO_PROVEEDOR=resend`, `RESEND_API_KEY=re_…`, `SMTP_FROM=onboarding@resend.dev`, `MODO_ENVIO=real`, `OPERACION_PUBLICA=true`, `BASE_URL=https://SU-SERVICIO.onrender.com`.
-4. Suscríbase con el **mismo correo de la cuenta Resend** (modo prueba). Revise spam.
-5. GitHub Secrets (External Database URL + BASE_URL + Resend) y **Actions → Pipeline Render → Run workflow**.
+3. Correo a **cualquier** destinatario con Brevo (plan gratuito; no hace falta comprar un dominio):
+   1. En [app.brevo.com](https://app.brevo.com) verifique un **Sender** (su Gmail).
+   2. Cree una API Key.
+   3. En Render → Environment:
+      - `CORREO_PROVEEDOR=brevo`
+      - `MODO_ENVIO=real`
+      - `OPERACION_PUBLICA=true`
+      - `BREVO_API_KEY=` (la clave)
+      - `SMTP_FROM=` el correo verificado en Senders
+      - `SMTP_FROM_NAME=Avisos de agua Lima`
+      - `BASE_URL=https://SU-SERVICIO.onrender.com` (sin barra final)
+   4. En GitHub Secrets: `BREVO_API_KEY`, `SMTP_FROM`, `BASE_URL`, `DATABASE_URL`.
+   5. Actions → **Pipeline Render** → Run (avisos cada 15 min) y **Informe zonas Render** (informe diario).
+4. El ciudadano confirma el enlace del correo. Hasta confirmar, no hay avisos de cortes. Revise spam.
+5. Estadísticas: `https://SU-SERVICIO.onrender.com/estadisticas` (públicas, sin correos). Grafana Cloud opcional: cree un dashboard público y ponga su URL en `GRAFANA_PUBLIC_URL` para incrustarlo. Prometheus local: http://127.0.0.1:9090 ; Grafana local: http://127.0.0.1:3000. Para que Grafana Cloud scrape `/metrics` de Render use `Authorization: Bearer` + `INTERNAL_API_TOKEN` (`PROTEGER_METRICS=true`).
 
 Si la fuente responde 403 desde Render, los cortes no llegarán por esa IP. En ese caso el workflow de GitHub (otra red) es el que debe llenar la base.
 
